@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import {
     Box, Button, Typography, Slider, Stack, IconButton,
     Alert, Snackbar
@@ -29,19 +28,28 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     const [endMarker, setEndMarker] = useState<number | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isPlayerReady, setIsPlayerReady] = useState(false);
+    const [apiReady, setApiReady] = useState(() => !!window.YT?.Player);
 
     const playerRef = useRef<any>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
+    const playerDivRef = useRef<HTMLDivElement>(null);
     const intervalRef = useRef<number | null>(null);
+    // ponytail: ドラッグ中のポーリング上書きを抑止するだけのフラグ。ロック等は不要
+    const seekingRef = useRef(false);
+    // ponytail: プレイヤー再生成なしで最新の終了コールバックを呼ぶ
+    const onVideoEndRef = useRef(onVideoEnd);
+    useEffect(() => { onVideoEndRef.current = onVideoEnd; });
 
     // YouTube API のロード
     useEffect(() => {
-        if (!window.YT) {
-            const tag = document.createElement('script');
-            tag.src = 'https://www.youtube.com/iframe_api';
-            const firstScriptTag = document.getElementsByTagName('script')[0];
-            firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+        if (window.YT?.Player) {
+            setApiReady(true);
+            return;
         }
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+        window.onYouTubeIframeAPIReady = () => setApiReady(true);
     }, []);
 
     // 動画切り替え時の初期化（IDが変わったときのみ。保存区間のDB更新ではリセットしない）
@@ -51,6 +59,9 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             setStartMarker(null);
             setEndMarker(null);
             setIsPlayerReady(false);
+            setPlaying(false);
+            setCurrentTime(0);
+            setDuration(0);
             playerRef.current = null;
             // 自動再生フラグは、プレイヤーが準備できてから適用される
         }
@@ -76,6 +87,8 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         if (activeVideo && isPlayerReady && playerRef.current) {
             const checkSegment = () => {
                 if (!playerRef.current || typeof playerRef.current.getCurrentTime !== 'function') return;
+                // ponytail: 自作UIドラッグ中のseekToとポーリングの競合を避ける
+                if (seekingRef.current) return;
 
                 try {
                     const current = playerRef.current.getCurrentTime();
@@ -124,41 +137,49 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         return match ? match[1] : '';
     };
 
-    const handleIframeAdded = () => {
-        // iframe が DOM に追加された直後に実行される
-        // 少し待機してから YT.Player をアタッチする
-        setTimeout(() => {
-            const iframe = containerRef.current?.querySelector('iframe');
-            if (iframe && window.YT && window.YT.Player) {
-                new window.YT.Player(iframe, {
-                    events: {
-                        onReady: (event: any) => {
-                            playerRef.current = event.target;
-                            setIsPlayerReady(true);
-                            setDuration(event.target.getDuration());
+    const videoId = activeVideo ? extractVideoId(activeVideo.youtubeUrl) : '';
+    useEffect(() => {
+        if (!apiReady || !videoId || !playerDivRef.current) return;
+        const player = new window.YT.Player(playerDivRef.current, {
+            videoId,
+            // ponytail: 未指定だと640x360固定になるため全体に広げる
+            width: '100%',
+            height: '100%',
+            playerVars: {
+                modestbranding: 1, rel: 0, iv_load_policy: 3,
+                controls: 0, disablekb: 1, fs: 0, autoplay: 1,
+            },
+            events: {
+                onReady: (event: any) => {
+                    playerRef.current = event.target;
+                    setIsPlayerReady(true);
+                    setDuration(event.target.getDuration());
 
-                            // 保存された最初の区間があればそこにシーク
-                            if (activeVideo && activeVideo.savedSegments.length > 0) {
-                                event.target.seekTo(activeVideo.savedSegments[0].start, true);
-                            } else if (activeVideo?.startMarker) {
-                                event.target.seekTo(activeVideo.startMarker, true);
-                            }
-
-                            if (isAutoPlaying) {
-                                event.target.playVideo();
-                                setPlaying(true);
-                            }
-                        },
-                        onStateChange: (event: any) => {
-                            if (event.data === window.YT.PlayerState.PLAYING) setPlaying(true);
-                            if (event.data === window.YT.PlayerState.PAUSED) setPlaying(false);
-                            if (event.data === window.YT.PlayerState.ENDED) onVideoEnd();
-                        }
+                    // 保存された最初の区間があればそこにシーク
+                    if (activeVideo && activeVideo.savedSegments.length > 0) {
+                        event.target.seekTo(activeVideo.savedSegments[0].start, true);
+                    } else if (activeVideo?.startMarker) {
+                        event.target.seekTo(activeVideo.startMarker, true);
                     }
-                });
+
+                    // ponytail: 選択＝再生。ブロック時は自作再生ボタンで開始できる
+                    event.target.playVideo();
+                    setPlaying(true);
+                },
+                onStateChange: (event: any) => {
+                    if (event.data === window.YT.PlayerState.PLAYING) setPlaying(true);
+                    if (event.data === window.YT.PlayerState.PAUSED) setPlaying(false);
+                    if (event.data === window.YT.PlayerState.ENDED) onVideoEndRef.current();
+                }
             }
-        }, 500);
-    };
+        });
+        return () => {
+            try { player.destroy(); } catch { /* already gone */ }
+            if (playerRef.current === player) playerRef.current = null;
+        };
+        // ponytail: activeVideo全体をdepsに入れると区間保存のたび再生成されるためvideoIdのみ
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [apiReady, videoId]);
 
     const togglePlay = () => {
         if (!playerRef.current) return;
@@ -170,8 +191,13 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         setPlaying(!playing);
     };
 
-    const handleSeek = (val: number) => {
+    const handleSeekPreview = (val: number) => {
+        setCurrentTime(val);
+    };
+
+    const handleSeekCommit = (val: number) => {
         if (playerRef.current) {
+            seekingRef.current = false;
             playerRef.current.seekTo(val, true);
             setCurrentTime(val);
         }
@@ -225,17 +251,12 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         );
     }
 
-    const videoId = extractVideoId(activeVideo.youtubeUrl);
-
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Box ref={containerRef} sx={{ flexGrow: 1, position: 'relative', bgcolor: '#000', borderRadius: 2, overflow: 'hidden' }}>
-                <LiteYouTubeEmbed
-                    id={videoId}
-                    title={activeVideo.title}
-                    onIframeAdded={handleIframeAdded}
-                    params="modestbranding=1&rel=0&iv_load_policy=3&enablejsapi=1"
-                />
+            <Box sx={{ flexGrow: 1, position: 'relative', bgcolor: '#000', borderRadius: 2, overflow: 'hidden' }}>
+                <Box ref={playerDivRef} sx={{ position: 'absolute', inset: 0 }} />
+                {/* ponytail: 埋め込み側の直接操作を遮断し自作UIに一本化する透明層 */}
+                <Box sx={{ position: 'absolute', inset: 0, cursor: 'default' }} />
             </Box>
 
             <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
@@ -247,7 +268,12 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                         <Slider
                             value={currentTime}
                             max={duration || 100}
-                            onChange={(_, val) => handleSeek(val as number)}
+                            disabled={!isPlayerReady}
+                            onChange={(_, val) => {
+                                seekingRef.current = true;
+                                handleSeekPreview(val as number);
+                            }}
+                            onChangeCommitted={(_, val) => handleSeekCommit(val as number)}
                             marks={[
                                 ...(startMarker !== null ? [{ value: startMarker, label: 'S' }] : []),
                                 ...(endMarker !== null ? [{ value: endMarker, label: 'E' }] : []),
