@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
     Box, Typography, FormControl, Select, MenuItem, Button,
-    TextField, List, ListItem,
+    TextField, List, ListItem, Checkbox, FormControlLabel,
     Avatar, IconButton, Divider, Stack
 } from '@mui/material';
 import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle } from 'lucide-react';
@@ -31,6 +31,8 @@ interface SidebarProps {
     onSelectVideo: (id: number) => void;
     activeVideoId: number | null;
     onPlayPlaylist: () => void;
+    isLoop: boolean;
+    onToggleLoop: (v: boolean) => void;
 }
 
 const SortableVideoItem = ({ video, isActive, onSelect, onDelete }: any) => {
@@ -135,7 +137,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     onSelectPlaylist,
     onSelectVideo,
     activeVideoId,
-    onPlayPlaylist
+    onPlayPlaylist,
+    isLoop,
+    onToggleLoop
 }) => {
     const [url, setUrl] = useState('');
     const playlists = useLiveQuery(() => db.playlists.toArray()) || [];
@@ -329,7 +333,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </Button>
                     </Box>
 
-                    <Divider sx={{ mb: 2 }} />
+                    <Divider sx={{ mb: 1 }} />
+
+                    <FormControlLabel
+                        control={
+                            <Checkbox
+                                size="small"
+                                checked={isLoop}
+                                onChange={(e) => onToggleLoop(e.target.checked)}
+                            />
+                        }
+                        label="ループ"
+                        sx={{ mb: 1 }}
+                    />
 
                     <DndContext
                         sensors={sensors}

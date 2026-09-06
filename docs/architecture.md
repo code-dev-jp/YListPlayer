@@ -21,6 +21,9 @@ index.html → main.tsx → App.tsx
 - **PlayerSection.tsx**: YouTubeプレイヤー（LiteYouTubeEmbed + IFrame API）を管理し、
   セグメントの設定・保存・範囲外スキップ再生を担当。
 - **db.ts**: Dexieスキーマ定義（Playlist / Video / VideoSegment）と `db` インスタンス。
+- **playback.ts**: 連続再生の次インデックス計算（`getNextVideoIndex`）と
+  区間監視の判定（`resolveSegmentAction`）を持つ純粋ロジック。
+  PlayerSection/App と `playback.test.ts`（vitest）の単一の真実。
 - **theme.ts**: MUI ダークテーマ定義。
 - **loadYoutubeApi.ts**: YouTube IFrame API のロード（PlayerSection内にも同様のコードが
   重複して存在）。
@@ -62,7 +65,7 @@ videos:    '++id, playlistId, order'
 | DB | Dexie 4 (IndexedDB) | |
 | DnD | @dnd-kit | |
 | 動画再生 | react-lite-youtube-embed + YT IFrame API | |
-| テスト | なし | |
+| テスト | vitest（playback.tsのみ） | UIのテストはなし |
 | Lint | script定義のみ / eslint設定ファイル欠落 | |
 
 ## セキュリティ境界（現状の理解）

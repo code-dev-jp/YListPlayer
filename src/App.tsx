@@ -4,12 +4,14 @@ import theme from './theme';
 import Sidebar from './Sidebar';
 import PlayerSection from './PlayerSection';
 import { db } from './db';
+import { getNextVideoIndex } from './playback';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 function App() {
     const [activePlaylistId, setActivePlaylistId] = useState<number | null>(null);
     const [activeVideoId, setActiveVideoId] = useState<number | null>(null);
     const [isAutoPlaying, setIsAutoPlaying] = useState(false);
+    const [isLoop, setIsLoop] = useState(false);
 
     const activeVideo = useLiveQuery(
         () => (activeVideoId ? db.videos.get(activeVideoId) : undefined),
@@ -30,8 +32,14 @@ function App() {
         if (!isAutoPlaying) return;
 
         const currentIndex = playlistVideos.findIndex(v => v.id === activeVideoId);
-        if (currentIndex !== -1 && currentIndex < playlistVideos.length - 1) {
-            setActiveVideoId(playlistVideos[currentIndex + 1].id!);
+        // ponytail: 再生中に削除された等で現在位置が不明なら停止（従来通り）
+        if (currentIndex === -1) {
+            setIsAutoPlaying(false);
+            return;
+        }
+        const next = getNextVideoIndex(currentIndex, playlistVideos.length, isLoop);
+        if (next !== null) {
+            setActiveVideoId(playlistVideos[next].id!);
         } else {
             setIsAutoPlaying(false);
         }
@@ -66,6 +74,8 @@ function App() {
                             onSelectVideo={handleSelectVideo}
                             activeVideoId={activeVideoId}
                             onPlayPlaylist={handlePlayPlaylist}
+                            isLoop={isLoop}
+                            onToggleLoop={setIsLoop}
                         />
                     </Grid>
                 </Grid>
