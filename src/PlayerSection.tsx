@@ -3,8 +3,9 @@ import {
     Box, Button, Typography, Slider, Stack, IconButton,
     Alert, Snackbar
 } from '@mui/material';
-import { Play, Pause, Save, Flag, Trash2 } from 'lucide-react';
+import { Play, Pause, Save, Flag, Trash2, Captions, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
 import { db, Video } from './db';
+import { resolveSegmentAction } from './playback';
 
 // YouTube IFrame API の型定義（簡易版）
 declare global {
@@ -29,10 +30,17 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     const [error, setError] = useState<string | null>(null);
     const [isPlayerReady, setIsPlayerReady] = useState(false);
     const [apiReady, setApiReady] = useState(() => !!window.YT?.Player);
+    const [volume, setVolume] = useState(100);
+    const [muted, setMuted] = useState(false);
+    const [ccOn, setCcOn] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
 
     const playerRef = useRef<any>(null);
     const playerDivRef = useRef<HTMLDivElement>(null);
+    const playerBoxRef = useRef<HTMLDivElement>(null);
     const intervalRef = useRef<number | null>(null);
+    // ponytail: 区間終了の二重通知を抑止するだけのフラグ。区間に戻ったら解除される
+    const endedNotifiedRef = useRef(false);
     // ponytail: ドラッグ中のポーリング上書きを抑止するだけのフラグ。ロック等は不要
     const seekingRef = useRef(false);
     // ponytail: プレイヤー再生成なしで最新の終了コールバックを呼ぶ
@@ -62,10 +70,19 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             setPlaying(false);
             setCurrentTime(0);
             setDuration(0);
+            setCcOn(false);
             playerRef.current = null;
+            endedNotifiedRef.current = false;
             // 自動再生フラグは、プレイヤーが準備できてから適用される
         }
     }, [activeVideoId]);
+
+    // Esc等での全画面解除をボタン表示に反映するだけの購読
+    useEffect(() => {
+        const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+        document.addEventListener('fullscreenchange', onFsChange);
+        return () => document.removeEventListener('fullscreenchange', onFsChange);
+    }, []);
 
     // Play ALL等でisAutoPlayingが後からtrueになった場合（既にプレイヤー準備済み）の再生
     useEffect(() => {
@@ -82,7 +99,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isAutoPlaying, isPlayerReady]);
 
-    // セグメント監視ロジック
+    // セグメント監視ロジック（判定条件は playback.ts の resolveSegmentAction が単一の真実）
     useEffect(() => {
         if (activeVideo && isPlayerReady && playerRef.current) {
             const checkSegment = () => {
@@ -97,28 +114,20 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                     const d = playerRef.current.getDuration();
                     if (d > 0 && duration === 0) setDuration(d);
 
-                    if (activeVideo.savedSegments && activeVideo.savedSegments.length > 0) {
-                        const currentSegment = activeVideo.savedSegments.find(seg =>
-                            current >= seg.start - 0.5 && current <= seg.end + 0.5
-                        );
-
-                        if (!currentSegment) {
-                            const nextSegment = activeVideo.savedSegments.find(seg => seg.start > current);
-                            if (nextSegment) {
-                                if (Math.abs(nextSegment.start - current) > 0.5) {
-                                    playerRef.current.seekTo(nextSegment.start, true);
-                                }
-                            } else {
-                                onVideoEnd();
-                            }
-                        } else if (current >= currentSegment.end) {
-                            const nextSegment = activeVideo.savedSegments.find(seg => seg.start > currentSegment.end);
-                            if (nextSegment) {
-                                playerRef.current.seekTo(nextSegment.start, true);
-                            } else {
-                                onVideoEnd();
-                            }
+                    const action = resolveSegmentAction(activeVideo.savedSegments ?? [], current);
+                    if (action.kind === 'seek') {
+                        playerRef.current.seekTo(action.time, true);
+                    } else if (action.kind === 'end') {
+                        // ponytail: 500ms毎の再通知を1回に抑え、その場で止める。
+                        // 連続再生ならApp側が次へ進める（onVideoEnd経由）
+                        if (!endedNotifiedRef.current) {
+                            endedNotifiedRef.current = true;
+                            try { playerRef.current.pauseVideo(); } catch { /* already gone */ }
+                            setPlaying(false);
+                            onVideoEndRef.current();
                         }
+                    } else {
+                        endedNotifiedRef.current = false;
                     }
                 } catch (e) {
                     console.error('Error during checkSegment:', e);
@@ -130,7 +139,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                 if (intervalRef.current) clearInterval(intervalRef.current);
             };
         }
-    }, [activeVideo, isPlayerReady, onVideoEnd, duration]);
+    }, [activeVideo, isPlayerReady, duration]);
 
     const extractVideoId = (url: string) => {
         const match = url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/);
@@ -154,6 +163,10 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                     playerRef.current = event.target;
                     setIsPlayerReady(true);
                     setDuration(event.target.getDuration());
+                    try {
+                        setVolume(event.target.getVolume());
+                        setMuted(event.target.isMuted());
+                    } catch { /* volume API unavailable */ }
 
                     // 保存された最初の区間があればそこにシーク
                     if (activeVideo && activeVideo.savedSegments.length > 0) {
@@ -189,6 +202,69 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             playerRef.current.playVideo();
         }
         setPlaying(!playing);
+    };
+
+    // ponytail: 区間チップクリック→その先頭へseekして再生再開
+    const seekToSegment = (sec: number) => {
+        if (!playerRef.current || !isPlayerReady) return;
+        try {
+            seekingRef.current = false;
+            endedNotifiedRef.current = false;
+            playerRef.current.seekTo(sec, true);
+            setCurrentTime(sec);
+            playerRef.current.playVideo();
+            setPlaying(true);
+        } catch (e) {
+            console.error('Error during seekToSegment:', e);
+        }
+    };
+
+    const toggleCaptions = () => {
+        if (!playerRef.current) return;
+        try {
+            // ponytail: IFrame APIに表示/非表示のgetterはないためload/unloadで切り替える
+            if (ccOn) playerRef.current.unloadModule('captions');
+            else playerRef.current.loadModule('captions');
+            setCcOn(!ccOn);
+        } catch (e) {
+            console.error('Error during toggleCaptions:', e);
+        }
+    };
+
+    const handleVolumeChange = (val: number) => {
+        setVolume(val);
+        if (!playerRef.current) return;
+        try {
+            playerRef.current.setVolume(val);
+            if (val > 0 && muted) {
+                playerRef.current.unMute();
+                setMuted(false);
+            }
+        } catch (e) {
+            console.error('Error during setVolume:', e);
+        }
+    };
+
+    const toggleMute = () => {
+        if (!playerRef.current) return;
+        try {
+            if (muted) playerRef.current.unMute();
+            else playerRef.current.mute();
+            setMuted(!muted);
+        } catch (e) {
+            console.error('Error during toggleMute:', e);
+        }
+    };
+
+    const toggleFullscreen = () => {
+        const el = playerBoxRef.current;
+        if (!el) return;
+        try {
+            if (document.fullscreenElement) document.exitFullscreen();
+            else el.requestFullscreen();
+        } catch (e) {
+            console.error('Error during toggleFullscreen:', e);
+        }
     };
 
     const handleSeekPreview = (val: number) => {
@@ -253,7 +329,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Box sx={{ flexGrow: 1, position: 'relative', bgcolor: '#000', borderRadius: 2, overflow: 'hidden' }}>
+            <Box ref={playerBoxRef} sx={{ flexGrow: 1, position: 'relative', bgcolor: '#000', borderRadius: 2, overflow: 'hidden' }}>
                 <Box ref={playerDivRef} sx={{ position: 'absolute', inset: 0 }} />
                 {/* ponytail: 埋め込み側の直接操作を遮断し自作UIに一本化する透明層 */}
                 <Box sx={{ position: 'absolute', inset: 0, cursor: 'default' }} />
@@ -320,6 +396,33 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                             {playing ? <Pause size={32} /> : <Play size={32} />}
                         </IconButton>
                     </Stack>
+
+                    <Stack direction="row" spacing={1} alignItems="center">
+                        <IconButton onClick={toggleMute} color="inherit" disabled={!isPlayerReady} title={muted ? 'ミュート解除' : 'ミュート'}>
+                            {muted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                        </IconButton>
+                        <Slider
+                            value={muted ? 0 : volume}
+                            min={0}
+                            max={100}
+                            disabled={!isPlayerReady}
+                            onChange={(_, val) => handleVolumeChange(val as number)}
+                            sx={{ width: 100 }}
+                            aria-label="音量"
+                        />
+                        <Box sx={{ flexGrow: 1 }} />
+                        <IconButton
+                            onClick={toggleCaptions}
+                            color={ccOn ? 'primary' : 'inherit'}
+                            disabled={!isPlayerReady}
+                            title={ccOn ? '字幕OFF' : '字幕ON'}
+                        >
+                            <Captions size={20} />
+                        </IconButton>
+                        <IconButton onClick={toggleFullscreen} color="inherit" disabled={!isPlayerReady} title={isFullscreen ? '全画面を終了' : '全画面'}>
+                            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                        </IconButton>
+                    </Stack>
                 </Stack>
             </Box>
 
@@ -330,6 +433,8 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                         {activeVideo.savedSegments.map((seg, i) => (
                             <Box
                                 key={i}
+                                onClick={() => seekToSegment(seg.start)}
+                                title="この区間から再生"
                                 sx={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -337,7 +442,9 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                                     px: 1.5,
                                     py: 0.5,
                                     borderRadius: 1,
-                                    border: '1px solid rgba(255,255,255,0.1)'
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    cursor: 'pointer',
+                                    '&:hover': { bgcolor: 'rgba(255,255,255,0.12)' }
                                 }}
                             >
                                 <Typography variant="caption" sx={{ mr: 1 }}>
@@ -345,7 +452,8 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                                 </Typography>
                                 <IconButton
                                     size="small"
-                                    onClick={async () => {
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
                                         if (activeVideo.id) {
                                             const newSegments = activeVideo.savedSegments.filter((_, idx) => idx !== i);
                                             await db.videos.update(activeVideo.id, { savedSegments: newSegments });
