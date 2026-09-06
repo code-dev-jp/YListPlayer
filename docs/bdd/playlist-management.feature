@@ -19,7 +19,7 @@ Feature: プレイリスト管理
   Scenario: 有効なYouTube URLで動画を追加する
     Given プレイリストが選択されている
     When 有効なYouTube URLを入力して追加する
-    Then 動画が追加され、videoIdからタイトル・サムネイルが生成される
+    Then 動画が追加され、API経由で実タイトルが保存される（取得失敗時は仮タイトル）。サムネイルはvideoIdから生成される
 
   # Inferred
   Scenario: 無効なURLでは動画が追加されない
