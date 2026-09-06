@@ -44,16 +44,32 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         }
     }, []);
 
-    // 動画切り替え時の初期化
+    // 動画切り替え時の初期化（IDが変わったときのみ。保存区間のDB更新ではリセットしない）
+    const activeVideoId = activeVideo?.id;
     useEffect(() => {
-        if (activeVideo) {
+        if (activeVideoId) {
             setStartMarker(null);
             setEndMarker(null);
             setIsPlayerReady(false);
             playerRef.current = null;
             // 自動再生フラグは、プレイヤーが準備できてから適用される
         }
-    }, [activeVideo]);
+    }, [activeVideoId]);
+
+    // Play ALL等でisAutoPlayingが後からtrueになった場合（既にプレイヤー準備済み）の再生
+    useEffect(() => {
+        if (isAutoPlaying && isPlayerReady && playerRef.current) {
+            try {
+                const first = activeVideo?.savedSegments?.[0]?.start ?? activeVideo?.startMarker;
+                if (first != null) playerRef.current.seekTo(first, true);
+                playerRef.current.playVideo();
+                setPlaying(true);
+            } catch (e) {
+                console.error('Error during autoplay:', e);
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAutoPlaying, isPlayerReady]);
 
     // セグメント監視ロジック
     useEffect(() => {
