@@ -2,10 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';
 import {
     Box, Button, Typography, Slider, Stack, IconButton,
-    Tooltip, Alert, Snackbar
+    Alert, Snackbar
 } from '@mui/material';
-import { Play, Pause, Save, Flag, ArrowRight, SkipForward, Trash2 } from 'lucide-react';
-import { db, Video, VideoSegment } from './db';
+import { Play, Pause, Save, Flag, Trash2 } from 'lucide-react';
+import { db, Video } from './db';
 
 // YouTube IFrame API の型定義（簡易版）
 declare global {

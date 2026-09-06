@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     Box, Typography, FormControl, Select, MenuItem, Button,
-    TextField, List, ListItem, ListItemAvatar,
+    TextField, List, ListItem,
     Avatar, IconButton, Divider, Stack
 } from '@mui/material';
 import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle } from 'lucide-react';
-import { db, Playlist, Video } from './db';
+import { db, Video } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
     DndContext,
@@ -185,7 +185,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     });
                 }
                 onSelectPlaylist(newPlaylistId as number);
-            } catch (err) {
+            } catch {
                 alert('Failed to import playlist');
             }
         };

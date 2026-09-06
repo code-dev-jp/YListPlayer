@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ThemeProvider, CssBaseline, Box, Grid } from '@mui/material';
 import theme from './theme';
 import Sidebar from './Sidebar';
 import PlayerSection from './PlayerSection';
-import { db, Video } from './db';
+import { db } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 function App() {

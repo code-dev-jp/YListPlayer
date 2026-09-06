@@ -33,8 +33,7 @@ Phase 00 はドキュメント整備そのもの。Phase 01 以降が実際の�
 - 現在の挙動を変える場合、対応するテスト（またはチェック）を計画に含める。
 
 ## While implementing
-- 変更のたびに `npm run build`（tsc + vite）で型・ビルドの検証を行う。
-- lint は現在設定が無いため、導入した場合はここに記す。
+- 変更のたびに `npm run build`（tsc + vite）と `npm run lint`（eslint, flat config）で検証を行う。
 
 ## Before marking a task or phase complete
 - `npm run build` が成功すること。
