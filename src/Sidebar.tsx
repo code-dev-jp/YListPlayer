@@ -84,6 +84,21 @@ const SortableVideoItem = ({ video, isActive, onSelect, onDelete }: any) => {
     );
 };
 
+const fetchVideoTitle = async (videoId: string): Promise<string | null> => {
+    try {
+        const res = await fetch(
+            `https://noembed.com/embed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`,
+            { signal: AbortSignal.timeout(5000) }
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        const title = typeof data?.title === 'string' ? data.title.trim() : '';
+        return title || null;
+    } catch {
+        return null;
+    }
+};
+
 const Sidebar: React.FC<SidebarProps> = ({
     activePlaylistId,
     onSelectPlaylist,
@@ -125,10 +140,12 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         if (!videoId) return;
 
+        const title = (await fetchVideoTitle(videoId)) ?? `Video ${videoId}`;
+
         const newVideo: Video = {
             playlistId: activePlaylistId,
             youtubeUrl: url,
-            title: `Video ${videoId}`,
+            title,
             thumbnail: `https://img.youtube.com/vi/${videoId}/default.jpg`,
             order: videos.length,
             savedSegments: []
