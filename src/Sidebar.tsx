@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     Box, Typography, FormControl, Select, MenuItem, Button,
     TextField, List, ListItem,
@@ -41,10 +41,36 @@ const SortableVideoItem = ({ video, isActive, onSelect, onDelete }: any) => {
         transform,
         transition,
     } = useSortable({ id: video.id });
+    const titleRef = useRef<HTMLElement>(null);
+    const scrollAnim = useRef<Animation | null>(null);
 
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
+    };
+
+    // ponytail: WAAPI marquee, no libs/timers. Runs only while hovering a truncated title.
+    const stopTitleScroll = () => {
+        scrollAnim.current?.cancel();
+        scrollAnim.current = null;
+        const el = titleRef.current;
+        if (el) {
+            el.style.overflow = '';
+            el.style.textOverflow = '';
+        }
+    };
+    const startTitleScroll = () => {
+        const el = titleRef.current;
+        if (!el || scrollAnim.current) return;
+        const overflow = el.scrollWidth - el.clientWidth;
+        if (overflow > 8) {
+            el.style.overflow = 'visible';
+            el.style.textOverflow = 'clip';
+            scrollAnim.current = el.animate(
+                [{ transform: 'translateX(0)' }, { transform: `translateX(${-overflow}px)` }],
+                { duration: Math.min(8000, Math.max(2000, overflow * 30)), iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' }
+            );
+        }
     };
 
     return (
@@ -64,13 +90,18 @@ const SortableVideoItem = ({ video, isActive, onSelect, onDelete }: any) => {
             }
             disablePadding
         >
-            <Box sx={{ display: 'flex', alignItems: 'center', p: 1, flexGrow: 1, cursor: 'pointer' }} onClick={() => onSelect(video.id)}>
+            <Box sx={{ display: 'flex', alignItems: 'center', p: 1, pr: 5, flexGrow: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onSelect(video.id)}>
                 <Box {...attributes} {...listeners} sx={{ cursor: 'grab', mr: 1, color: 'grey.600' }}>
                     <GripVertical size={20} />
                 </Box>
                 <Avatar variant="rounded" src={video.thumbnail} sx={{ width: 48, height: 36, mr: 1.5 }} />
-                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                    <Typography variant="body2" noWrap sx={{ color: isActive ? 'white' : 'inherit' }}>
+                <Box sx={{ flexGrow: 1, minWidth: 0, overflow: 'hidden' }}>
+                    <Typography
+                        ref={titleRef}
+                        onMouseEnter={startTitleScroll}
+                        onMouseLeave={stopTitleScroll}
+                        variant="body2" noWrap sx={{ color: isActive ? 'white' : 'inherit' }}
+                    >
                         {video.title}
                     </Typography>
                     {video.savedSegments?.length > 0 && (
