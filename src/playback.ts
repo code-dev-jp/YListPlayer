@@ -16,7 +16,9 @@ export type SegmentAction =
     | { kind: 'end' };
 
 // ponytail: PlayerSectionのポーリング条件(±0.5s境界)と同一。UI側に二重に書かない
-export function resolveSegmentAction(segments: VideoSegment[], current: number): SegmentAction {
+// playing=false（一時停止中）は区間外でもシークしない（ユーザーが任意の位置にシークできるようにする）
+export function resolveSegmentAction(segments: VideoSegment[], current: number, playing: boolean): SegmentAction {
+    if (!playing) return { kind: 'continue' };
     if (segments.length === 0) return { kind: 'continue' };
     const currentSegment = segments.find(
         (seg) => current >= seg.start - 0.5 && current <= seg.end + 0.5

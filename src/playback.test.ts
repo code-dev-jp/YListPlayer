@@ -23,29 +23,34 @@ describe('getNextVideoIndex', () => {
 });
 
 describe('resolveSegmentAction', () => {
+    it('一時停止中は区間外でもシークしない（どこでもシーク可能）', () => {
+        expect(resolveSegmentAction([{ start: 10, end: 20 }], 0, false)).toEqual({ kind: 'continue' });
+        expect(resolveSegmentAction([{ start: 10, end: 20 }], 5, false)).toEqual({ kind: 'continue' });
+        expect(resolveSegmentAction([{ start: 10, end: 20 }], 50, false)).toEqual({ kind: 'continue' });
+    });
     it('区間なしは継続', () => {
-        expect(resolveSegmentAction([], 50)).toEqual({ kind: 'continue' });
+        expect(resolveSegmentAction([], 50, true)).toEqual({ kind: 'continue' });
     });
     it('区間内は継続', () => {
-        expect(resolveSegmentAction([{ start: 10, end: 20 }], 15)).toEqual({ kind: 'continue' });
+        expect(resolveSegmentAction([{ start: 10, end: 20 }], 15, true)).toEqual({ kind: 'continue' });
     });
     it('区間の終了到達で次区間へseek', () => {
         expect(
-            resolveSegmentAction([{ start: 10, end: 20 }, { start: 30, end: 40 }], 20.2)
+            resolveSegmentAction([{ start: 10, end: 20 }, { start: 30, end: 40 }], 20.2, true)
         ).toEqual({ kind: 'seek', time: 30 });
     });
     it('最終区間の終了到達でend', () => {
-        expect(resolveSegmentAction([{ start: 10, end: 20 }], 20)).toEqual({ kind: 'end' });
-        expect(resolveSegmentAction([{ start: 10, end: 20 }], 25)).toEqual({ kind: 'end' });
+        expect(resolveSegmentAction([{ start: 10, end: 20 }], 20, true)).toEqual({ kind: 'end' });
+        expect(resolveSegmentAction([{ start: 10, end: 20 }], 25, true)).toEqual({ kind: 'end' });
     });
     it('区間間の隙間は次区間へseek', () => {
         expect(
-            resolveSegmentAction([{ start: 10, end: 20 }, { start: 30, end: 40 }], 25)
+            resolveSegmentAction([{ start: 10, end: 20 }, { start: 30, end: 40 }], 25, true)
         ).toEqual({ kind: 'seek', time: 30 });
     });
     it('次区間の直前(0.5s以内)は継続', () => {
         expect(
-            resolveSegmentAction([{ start: 10, end: 20 }, { start: 30, end: 40 }], 29.8)
+            resolveSegmentAction([{ start: 10, end: 20 }, { start: 30, end: 40 }], 29.8, true)
         ).toEqual({ kind: 'continue' });
     });
 });

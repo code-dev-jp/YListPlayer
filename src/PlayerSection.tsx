@@ -43,6 +43,8 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     const endedNotifiedRef = useRef(false);
     // ponytail: ドラッグ中のポーリング上書きを抑止するだけのフラグ。ロック等は不要
     const seekingRef = useRef(false);
+    // ponytail: ポーリング内でplaying状態を参照するためのref（effect depsを増やさない）
+    const playingRef = useRef(false);
     // ponytail: プレイヤー再生成なしで最新の終了コールバックを呼ぶ
     const onVideoEndRef = useRef(onVideoEnd);
     useEffect(() => { onVideoEndRef.current = onVideoEnd; });
@@ -68,6 +70,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             setEndMarker(null);
             setIsPlayerReady(false);
             setPlaying(false);
+            playingRef.current = false;
             setCurrentTime(0);
             setDuration(0);
             setCcOn(false);
@@ -92,6 +95,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                 if (first != null) playerRef.current.seekTo(first, true);
                 playerRef.current.playVideo();
                 setPlaying(true);
+                playingRef.current = true;
             } catch (e) {
                 console.error('Error during autoplay:', e);
             }
@@ -114,7 +118,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                     const d = playerRef.current.getDuration();
                     if (d > 0 && duration === 0) setDuration(d);
 
-                    const action = resolveSegmentAction(activeVideo.savedSegments ?? [], current);
+                    const action = resolveSegmentAction(activeVideo.savedSegments ?? [], current, playingRef.current);
                     if (action.kind === 'seek') {
                         playerRef.current.seekTo(action.time, true);
                     } else if (action.kind === 'end') {
@@ -124,6 +128,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                             endedNotifiedRef.current = true;
                             try { playerRef.current.pauseVideo(); } catch { /* already gone */ }
                             setPlaying(false);
+                            playingRef.current = false;
                             onVideoEndRef.current();
                         }
                     } else {
@@ -176,12 +181,19 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                     }
 
                     // ponytail: 選択＝再生。ブロック時は自作再生ボタンで開始できる
-                    event.target.playVideo();
-                    setPlaying(true);
+                event.target.playVideo();
+                setPlaying(true);
+                playingRef.current = true;
                 },
                 onStateChange: (event: any) => {
-                    if (event.data === window.YT.PlayerState.PLAYING) setPlaying(true);
-                    if (event.data === window.YT.PlayerState.PAUSED) setPlaying(false);
+                    if (event.data === window.YT.PlayerState.PLAYING) {
+                        setPlaying(true);
+                        playingRef.current = true;
+                    }
+                    if (event.data === window.YT.PlayerState.PAUSED) {
+                        setPlaying(false);
+                        playingRef.current = false;
+                    }
                     if (event.data === window.YT.PlayerState.ENDED) onVideoEndRef.current();
                 }
             }
@@ -202,6 +214,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             playerRef.current.playVideo();
         }
         setPlaying(!playing);
+        playingRef.current = !playing;
     };
 
     // ponytail: 区間チップクリック→その先頭へseekして再生再開
@@ -214,6 +227,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             setCurrentTime(sec);
             playerRef.current.playVideo();
             setPlaying(true);
+            playingRef.current = true;
         } catch (e) {
             console.error('Error during seekToSegment:', e);
         }
