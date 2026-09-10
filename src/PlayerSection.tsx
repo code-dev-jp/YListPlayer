@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
     Box, Button, Typography, Slider, Stack, IconButton,
-    Alert, Snackbar
+    Alert, Snackbar, Checkbox, FormControlLabel
 } from '@mui/material';
-import { Play, Pause, Save, Flag, Trash2, Captions, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
+import { Save, Flag, Trash2 } from 'lucide-react';
 import { db, Video } from './db';
 import { resolveSegmentAction } from './playback';
 
@@ -22,7 +22,6 @@ interface PlayerSectionProps {
 }
 
 const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, isAutoPlaying }) => {
-    const [playing, setPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [startMarker, setStartMarker] = useState<number | null>(null);
@@ -30,10 +29,8 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     const [error, setError] = useState<string | null>(null);
     const [isPlayerReady, setIsPlayerReady] = useState(false);
     const [apiReady, setApiReady] = useState(() => !!window.YT?.Player);
-    const [volume, setVolume] = useState(100);
-    const [muted, setMuted] = useState(false);
-    const [ccOn, setCcOn] = useState(false);
-    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [stopOutsideSegment, setStopOutsideSegment] = useState(true);
+    const stopOutsideSegmentRef = useRef(true);
 
     const playerRef = useRef<any>(null);
     const playerDivRef = useRef<HTMLDivElement>(null);
@@ -43,11 +40,14 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     const endedNotifiedRef = useRef(false);
     // ponytail: ドラッグ中のポーリング上書きを抑止するだけのフラグ。ロック等は不要
     const seekingRef = useRef(false);
+    // ponytail: seekTo直後のポーリングでYouTube側の遅延によりスライダーが戻るのを防ぐ
+    const lastSeekTimeRef = useRef(0);
     // ponytail: ポーリング内でplaying状態を参照するためのref（effect depsを増やさない）
     const playingRef = useRef(false);
     // ponytail: プレイヤー再生成なしで最新の終了コールバックを呼ぶ
     const onVideoEndRef = useRef(onVideoEnd);
     useEffect(() => { onVideoEndRef.current = onVideoEnd; });
+    useEffect(() => { stopOutsideSegmentRef.current = stopOutsideSegment; }, [stopOutsideSegment]);
 
     // YouTube API のロード
     useEffect(() => {
@@ -69,32 +69,25 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             setStartMarker(null);
             setEndMarker(null);
             setIsPlayerReady(false);
-            setPlaying(false);
             playingRef.current = false;
             setCurrentTime(0);
             setDuration(0);
-            setCcOn(false);
             playerRef.current = null;
             endedNotifiedRef.current = false;
             // 自動再生フラグは、プレイヤーが準備できてから適用される
         }
     }, [activeVideoId]);
 
-    // Esc等での全画面解除をボタン表示に反映するだけの購読
-    useEffect(() => {
-        const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
-        document.addEventListener('fullscreenchange', onFsChange);
-        return () => document.removeEventListener('fullscreenchange', onFsChange);
-    }, []);
-
     // Play ALL等でisAutoPlayingが後からtrueになった場合（既にプレイヤー準備済み）の再生
     useEffect(() => {
         if (isAutoPlaying && isPlayerReady && playerRef.current) {
             try {
                 const first = activeVideo?.savedSegments?.[0]?.start ?? activeVideo?.startMarker;
-                if (first != null) playerRef.current.seekTo(first, true);
+                if (first != null) {
+                    playerRef.current.seekTo(first, true);
+                    lastSeekTimeRef.current = first;
+                }
                 playerRef.current.playVideo();
-                setPlaying(true);
                 playingRef.current = true;
             } catch (e) {
                 console.error('Error during autoplay:', e);
@@ -113,13 +106,17 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
 
                 try {
                     const current = playerRef.current.getCurrentTime();
+                    // ponytail: seekTo直後はYouTubeが遅れて古い位置を返すことがある。スナップバック防止
+                    if (current < lastSeekTimeRef.current - 0.5) return;
                     setCurrentTime(current);
 
                     const d = playerRef.current.getDuration();
                     if (d > 0 && duration === 0) setDuration(d);
 
                     const action = resolveSegmentAction(activeVideo.savedSegments ?? [], current, playingRef.current);
-                    if (action.kind === 'seek') {
+                    if (!stopOutsideSegmentRef.current && action.kind !== 'continue') {
+                        endedNotifiedRef.current = false;
+                    } else if (action.kind === 'seek') {
                         playerRef.current.seekTo(action.time, true);
                     } else if (action.kind === 'end') {
                         // ponytail: 500ms毎の再通知を1回に抑え、その場で止める。
@@ -127,7 +124,6 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                         if (!endedNotifiedRef.current) {
                             endedNotifiedRef.current = true;
                             try { playerRef.current.pauseVideo(); } catch { /* already gone */ }
-                            setPlaying(false);
                             playingRef.current = false;
                             onVideoEndRef.current();
                         }
@@ -161,37 +157,32 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             height: '100%',
             playerVars: {
                 modestbranding: 1, rel: 0, iv_load_policy: 3,
-                controls: 0, disablekb: 1, fs: 0, autoplay: 1,
+                autoplay: 1,
             },
             events: {
                 onReady: (event: any) => {
                     playerRef.current = event.target;
                     setIsPlayerReady(true);
                     setDuration(event.target.getDuration());
-                    try {
-                        setVolume(event.target.getVolume());
-                        setMuted(event.target.isMuted());
-                    } catch { /* volume API unavailable */ }
 
                     // 保存された最初の区間があればそこにシーク
                     if (activeVideo && activeVideo.savedSegments.length > 0) {
                         event.target.seekTo(activeVideo.savedSegments[0].start, true);
+                        lastSeekTimeRef.current = activeVideo.savedSegments[0].start;
                     } else if (activeVideo?.startMarker) {
                         event.target.seekTo(activeVideo.startMarker, true);
+                        lastSeekTimeRef.current = activeVideo.startMarker;
                     }
 
                     // ponytail: 選択＝再生。ブロック時は自作再生ボタンで開始できる
                 event.target.playVideo();
-                setPlaying(true);
                 playingRef.current = true;
                 },
                 onStateChange: (event: any) => {
                     if (event.data === window.YT.PlayerState.PLAYING) {
-                        setPlaying(true);
                         playingRef.current = true;
                     }
                     if (event.data === window.YT.PlayerState.PAUSED) {
-                        setPlaying(false);
                         playingRef.current = false;
                     }
                     if (event.data === window.YT.PlayerState.ENDED) onVideoEndRef.current();
@@ -206,17 +197,6 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [apiReady, videoId]);
 
-    const togglePlay = () => {
-        if (!playerRef.current) return;
-        if (playing) {
-            playerRef.current.pauseVideo();
-        } else {
-            playerRef.current.playVideo();
-        }
-        setPlaying(!playing);
-        playingRef.current = !playing;
-    };
-
     // ponytail: 区間チップクリック→その先頭へseekして再生再開
     const seekToSegment = (sec: number) => {
         if (!playerRef.current || !isPlayerReady) return;
@@ -225,71 +205,11 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             endedNotifiedRef.current = false;
             playerRef.current.seekTo(sec, true);
             setCurrentTime(sec);
+            lastSeekTimeRef.current = sec;
             playerRef.current.playVideo();
-            setPlaying(true);
             playingRef.current = true;
         } catch (e) {
             console.error('Error during seekToSegment:', e);
-        }
-    };
-
-    const toggleCaptions = () => {
-        if (!playerRef.current) return;
-        try {
-            // ponytail: IFrame APIに表示/非表示のgetterはないためload/unloadで切り替える
-            if (ccOn) playerRef.current.unloadModule('captions');
-            else playerRef.current.loadModule('captions');
-            setCcOn(!ccOn);
-        } catch (e) {
-            console.error('Error during toggleCaptions:', e);
-        }
-    };
-
-    const handleVolumeChange = (val: number) => {
-        setVolume(val);
-        if (!playerRef.current) return;
-        try {
-            playerRef.current.setVolume(val);
-            if (val > 0 && muted) {
-                playerRef.current.unMute();
-                setMuted(false);
-            }
-        } catch (e) {
-            console.error('Error during setVolume:', e);
-        }
-    };
-
-    const toggleMute = () => {
-        if (!playerRef.current) return;
-        try {
-            if (muted) playerRef.current.unMute();
-            else playerRef.current.mute();
-            setMuted(!muted);
-        } catch (e) {
-            console.error('Error during toggleMute:', e);
-        }
-    };
-
-    const toggleFullscreen = () => {
-        const el = playerBoxRef.current;
-        if (!el) return;
-        try {
-            if (document.fullscreenElement) document.exitFullscreen();
-            else el.requestFullscreen();
-        } catch (e) {
-            console.error('Error during toggleFullscreen:', e);
-        }
-    };
-
-    const handleSeekPreview = (val: number) => {
-        setCurrentTime(val);
-    };
-
-    const handleSeekCommit = (val: number) => {
-        if (playerRef.current) {
-            seekingRef.current = false;
-            playerRef.current.seekTo(val, true);
-            setCurrentTime(val);
         }
     };
 
@@ -345,37 +265,48 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Box ref={playerBoxRef} sx={{ flexGrow: 1, position: 'relative', bgcolor: '#000', borderRadius: 2, overflow: 'hidden' }}>
                 <Box ref={playerDivRef} sx={{ position: 'absolute', inset: 0 }} />
-                {/* ponytail: 埋め込み側の直接操作を遮断し自作UIに一本化する透明層 */}
-                <Box sx={{ position: 'absolute', inset: 0, cursor: 'default' }} />
             </Box>
 
             <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
                 <Stack spacing={2}>
-                    <Box>
-                        <Typography variant="caption" color="grey.500">
-                            {activeVideo.savedSegments.length > 0 ? `${activeVideo.savedSegments.length}個の保存済み区間があります` : 'シークバーで範囲を指定してください'}
-                        </Typography>
+                    <Box sx={{ position: 'relative', mx: 1.5 }}>
                         <Slider
                             value={currentTime}
                             max={duration || 100}
-                            disabled={!isPlayerReady}
-                            onChange={(_, val) => {
-                                seekingRef.current = true;
-                                handleSeekPreview(val as number);
-                            }}
-                            onChangeCommitted={(_, val) => handleSeekCommit(val as number)}
-                            marks={[
-                                ...(startMarker !== null ? [{ value: startMarker, label: 'S' }] : []),
-                                ...(endMarker !== null ? [{ value: endMarker, label: 'E' }] : []),
-                                ...activeVideo.savedSegments.flatMap((seg, i) => [
-                                    { value: seg.start, label: `[${i + 1}` },
-                                    { value: seg.end, label: `]` }
-                                ])
-                            ]}
-                            sx={{
-                                '& .MuiSlider-markLabel': { color: 'primary.main', fontWeight: 'bold', fontSize: '0.7rem' }
-                            }}
+                            disabled
+                            sx={{ '& .MuiSlider-thumb': { display: 'none' } }}
                         />
+                        {(startMarker !== null ? [{ value: startMarker, label: 'S' }] : [])
+                            .concat(endMarker !== null ? [{ value: endMarker, label: 'E' }] : [])
+                            .concat(activeVideo.savedSegments.flatMap((seg, i) => [
+                                { value: seg.start, label: `[${i + 1}` },
+                                { value: seg.end, label: `${i + 1}]` }
+                            ]))
+                            .map((mark, i) => (
+                                <Box
+                                    key={i}
+                                    component="button"
+                                    onClick={() => seekToSegment(mark.value)}
+                                    title={`${mark.label} に飛ぶ`}
+                                    sx={{
+                                        position: 'absolute',
+                                        bottom: '100%',
+                                        left: `${(mark.value / (duration || 100)) * 100}%`,
+                                        transform: 'translateX(-50%)',
+                                        bgcolor: 'transparent',
+                                        border: 'none',
+                                        color: 'primary.main',
+                                        fontWeight: 'bold',
+                                        fontSize: '0.7rem',
+                                        cursor: 'pointer',
+                                        p: 0,
+                                        '&:hover': { color: 'primary.light' },
+                                    }}
+                                >
+                                    {mark.label}
+                                </Box>
+                            ))
+                        }
                     </Box>
 
                     <Stack direction="row" spacing={2} alignItems="center">
@@ -406,43 +337,25 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
 
                         <Box sx={{ flexGrow: 1 }} />
 
-                        <IconButton onClick={togglePlay} color="primary" disabled={!isPlayerReady}>
-                            {playing ? <Pause size={32} /> : <Play size={32} />}
-                        </IconButton>
-                    </Stack>
-
-                    <Stack direction="row" spacing={1} alignItems="center">
-                        <IconButton onClick={toggleMute} color="inherit" disabled={!isPlayerReady} title={muted ? 'ミュート解除' : 'ミュート'}>
-                            {muted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                        </IconButton>
-                        <Slider
-                            value={muted ? 0 : volume}
-                            min={0}
-                            max={100}
-                            disabled={!isPlayerReady}
-                            onChange={(_, val) => handleVolumeChange(val as number)}
-                            sx={{ width: 100 }}
-                            aria-label="音量"
+                        <FormControlLabel
+                            control={
+                                <Checkbox
+                                    checked={stopOutsideSegment}
+                                    onChange={(e) => setStopOutsideSegment(e.target.checked)}
+                                    size="small"
+                                />
+                            }
+                            label="区間外で停止"
                         />
-                        <Box sx={{ flexGrow: 1 }} />
-                        <IconButton
-                            onClick={toggleCaptions}
-                            color={ccOn ? 'primary' : 'inherit'}
-                            disabled={!isPlayerReady}
-                            title={ccOn ? '字幕OFF' : '字幕ON'}
-                        >
-                            <Captions size={20} />
-                        </IconButton>
-                        <IconButton onClick={toggleFullscreen} color="inherit" disabled={!isPlayerReady} title={isFullscreen ? '全画面を終了' : '全画面'}>
-                            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-                        </IconButton>
                     </Stack>
                 </Stack>
             </Box>
 
-            {activeVideo.savedSegments && activeVideo.savedSegments.length > 0 && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2, flexGrow: 0, overflowY: 'auto', maxHeight: '150px' }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>保存済み区間リスト</Typography>
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2, flexGrow: 0, overflowY: 'auto', maxHeight: '150px' }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>保存済み区間リスト</Typography>
+                {activeVideo.savedSegments.length === 0 ? (
+                    <Typography variant="caption" color="grey.500">区間が保存されていません</Typography>
+                ) : (
                     <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                         {activeVideo.savedSegments.map((seg, i) => (
                             <Box
@@ -480,8 +393,8 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                             </Box>
                         ))}
                     </Stack>
-                </Box>
-            )}
+                )}
+            </Box>
 
             {error && (
                 <Snackbar open onClose={() => setError(null)} autoHideDuration={4000}>

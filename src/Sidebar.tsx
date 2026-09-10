@@ -166,6 +166,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         }
     };
 
+    const handleDeletePlaylist = async () => {
+        if (!activePlaylistId) return;
+        if (!confirm('このプレイリストを削除しますか？')) return;
+        await db.videos.where('playlistId').equals(activePlaylistId).delete();
+        await db.playlists.delete(activePlaylistId);
+        onSelectPlaylist(null);
+    };
+
     const handleAddVideo = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!url || !activePlaylistId) return;
@@ -224,8 +232,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                 const data = JSON.parse(event.target?.result as string);
                 const { playlist, videos: importedVideos } = data;
 
+                const name = prompt('インポート先のプレイリスト名:', `${playlist.name} (Imported)`);
+                if (!name) return;
+
                 const newPlaylistId = await db.playlists.add({
-                    name: `${playlist.name} (Imported)`,
+                    name,
                     createdAt: Date.now()
                 });
 
@@ -281,22 +292,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <IconButton onClick={handleCreatePlaylist} color="primary">
                     <Plus size={24} />
                 </IconButton>
+                <IconButton onClick={handleDeletePlaylist} color="error" disabled={!activePlaylistId}>
+                    <Trash2 size={24} />
+                </IconButton>
             </Stack>
 
             {activePlaylistId && (
                 <>
-                    <Button
-                        fullWidth
-                        variant="contained"
-                        color="success"
-                        startIcon={<PlayCircle size={20} />}
-                        sx={{ mb: 2 }}
-                        onClick={onPlayPlaylist}
-                        disabled={videos.length === 0}
-                    >
-                        Play All
-                    </Button>
-
                     <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
                         <Button
                             fullWidth
@@ -334,6 +336,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </Box>
 
                     <Divider sx={{ mb: 1 }} />
+                    
+                    <Button
+                        fullWidth
+                        variant="contained"
+                        color="success"
+                        startIcon={<PlayCircle size={20} />}
+                        sx={{ mb: 2 }}
+                        onClick={onPlayPlaylist}
+                        disabled={videos.length === 0}
+                    >
+                        Play All
+                    </Button>
+
 
                     <FormControlLabel
                         control={
