@@ -7,6 +7,7 @@ import {
 import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle } from 'lucide-react';
 import { db, Video } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import ConfirmDialog, { DialogState } from './ConfirmDialog';
 import {
     DndContext,
     closestCenter,
@@ -142,6 +143,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     onToggleLoop
 }) => {
     const [url, setUrl] = useState('');
+    const [dialog, setDialog] = useState<DialogState>({ open: false, variant: 'alert', title: '' });
     const playlists = useLiveQuery(() => db.playlists.toArray()) || [];
     const videos = useLiveQuery(
         () => (activePlaylistId ? db.videos.where('playlistId').equals(activePlaylistId).sortBy('order') : []),
@@ -155,23 +157,34 @@ const Sidebar: React.FC<SidebarProps> = ({
         })
     );
 
-    const handleCreatePlaylist = async () => {
-        const name = prompt('Playlist Name:');
-        if (name) {
-            const id = await db.playlists.add({
-                name,
-                createdAt: Date.now()
-            });
-            onSelectPlaylist(id as number);
-        }
+    const handleCreatePlaylist = () => {
+        setDialog({
+            open: true,
+            variant: 'prompt',
+            title: '新しいプレイリスト',
+            message: 'プレイリスト名:',
+            onResult: async (ok, name) => {
+                if (!ok || !name) return;
+                const id = await db.playlists.add({ name, createdAt: Date.now() });
+                onSelectPlaylist(id as number);
+            }
+        });
     };
 
-    const handleDeletePlaylist = async () => {
+    const handleDeletePlaylist = () => {
         if (!activePlaylistId) return;
-        if (!confirm('このプレイリストを削除しますか？')) return;
-        await db.videos.where('playlistId').equals(activePlaylistId).delete();
-        await db.playlists.delete(activePlaylistId);
-        onSelectPlaylist(null);
+        setDialog({
+            open: true,
+            variant: 'confirm',
+            title: 'プレイリストの削除',
+            message: 'このプレイリストを削除しますか？',
+            onResult: async (ok) => {
+                if (!ok || !activePlaylistId) return;
+                await db.videos.where('playlistId').equals(activePlaylistId).delete();
+                await db.playlists.delete(activePlaylistId);
+                onSelectPlaylist(null);
+            }
+        });
     };
 
     const handleAddVideo = async (e: React.FormEvent) => {
@@ -232,24 +245,36 @@ const Sidebar: React.FC<SidebarProps> = ({
                 const data = JSON.parse(event.target?.result as string);
                 const { playlist, videos: importedVideos } = data;
 
-                const name = prompt('インポート先のプレイリスト名:', `${playlist.name} (Imported)`);
-                if (!name) return;
+                setDialog({
+                    open: true,
+                    variant: 'prompt',
+                    title: 'インポート先のプレイリスト名',
+                    defaultValue: `${playlist.name} (Imported)`,
+                    onResult: async (ok, name) => {
+                        if (!ok || !name) return;
 
-                const newPlaylistId = await db.playlists.add({
-                    name,
-                    createdAt: Date.now()
+                        const newPlaylistId = await db.playlists.add({
+                            name,
+                            createdAt: Date.now()
+                        });
+
+                        for (const v of importedVideos) {
+                            await db.videos.add({
+                                ...v,
+                                id: undefined,
+                                playlistId: newPlaylistId as number
+                            });
+                        }
+                        onSelectPlaylist(newPlaylistId as number);
+                    }
                 });
-
-                for (const v of importedVideos) {
-                    await db.videos.add({
-                        ...v,
-                        id: undefined,
-                        playlistId: newPlaylistId as number
-                    });
-                }
-                onSelectPlaylist(newPlaylistId as number);
             } catch {
-                alert('Failed to import playlist');
+                setDialog({
+                    open: true,
+                    variant: 'alert',
+                    title: 'インポート失敗',
+                    message: 'Failed to import playlist'
+                });
             }
         };
         reader.readAsText(file);
@@ -386,6 +411,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </DndContext>
                 </>
             )}
+            <ConfirmDialog state={dialog} onChange={setDialog} />
         </Box>
     );
 };
