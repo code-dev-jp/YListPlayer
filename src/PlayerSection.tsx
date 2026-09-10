@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-    Box, Button, Typography, Slider, Stack, IconButton,
-    Alert, Snackbar, Checkbox, FormControlLabel
+    Box, Button, Typography, Stack, IconButton,
+    Alert, Snackbar, Checkbox, FormControlLabel, LinearProgress
 } from '@mui/material';
 import { Save, Flag, Trash2 } from 'lucide-react';
 import { db, Video } from './db';
-import { resolveSegmentAction } from './playback';
+import { resolveSegmentAction, getInitialSeekTime, extractVideoId } from './playback';
 
 // YouTube IFrame API の型定義（簡易版）
 declare global {
@@ -30,24 +30,19 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     const [isPlayerReady, setIsPlayerReady] = useState(false);
     const [apiReady, setApiReady] = useState(() => !!window.YT?.Player);
     const [stopOutsideSegment, setStopOutsideSegment] = useState(true);
-    const stopOutsideSegmentRef = useRef(true);
 
     const playerRef = useRef<any>(null);
     const playerDivRef = useRef<HTMLDivElement>(null);
-    const playerBoxRef = useRef<HTMLDivElement>(null);
     const intervalRef = useRef<number | null>(null);
     // ponytail: 区間終了の二重通知を抑止するだけのフラグ。区間に戻ったら解除される
     const endedNotifiedRef = useRef(false);
     // ponytail: ドラッグ中のポーリング上書きを抑止するだけのフラグ。ロック等は不要
     const seekingRef = useRef(false);
-    // ponytail: seekTo直後のポーリングでYouTube側の遅延によりスライダーが戻るのを防ぐ
-    const lastSeekTimeRef = useRef(0);
     // ponytail: ポーリング内でplaying状態を参照するためのref（effect depsを増やさない）
     const playingRef = useRef(false);
     // ponytail: プレイヤー再生成なしで最新の終了コールバックを呼ぶ
     const onVideoEndRef = useRef(onVideoEnd);
     useEffect(() => { onVideoEndRef.current = onVideoEnd; });
-    useEffect(() => { stopOutsideSegmentRef.current = stopOutsideSegment; }, [stopOutsideSegment]);
 
     // YouTube API のロード
     useEffect(() => {
@@ -82,11 +77,8 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     useEffect(() => {
         if (isAutoPlaying && isPlayerReady && playerRef.current) {
             try {
-                const first = activeVideo?.savedSegments?.[0]?.start ?? activeVideo?.startMarker;
-                if (first != null) {
-                    playerRef.current.seekTo(first, true);
-                    lastSeekTimeRef.current = first;
-                }
+                const seekTime = getInitialSeekTime(activeVideo?.savedSegments ?? [], activeVideo?.startMarker);
+                if (seekTime != null) playerRef.current.seekTo(seekTime, true);
                 playerRef.current.playVideo();
                 playingRef.current = true;
             } catch (e) {
@@ -106,18 +98,19 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
 
                 try {
                     const current = playerRef.current.getCurrentTime();
-                    // ponytail: seekTo直後はYouTubeが遅れて古い位置を返すことがある。スナップバック防止
-                    if (current < lastSeekTimeRef.current - 0.5) return;
                     setCurrentTime(current);
 
                     const d = playerRef.current.getDuration();
                     if (d > 0 && duration === 0) setDuration(d);
 
                     const action = resolveSegmentAction(activeVideo.savedSegments ?? [], current, playingRef.current);
-                    if (!stopOutsideSegmentRef.current && action.kind !== 'continue') {
+                    if (!stopOutsideSegment && action.kind !== 'continue') {
                         endedNotifiedRef.current = false;
                     } else if (action.kind === 'seek') {
+                        // ponytail: seekingRefでポーリングをブロックし、YouTube側の遅延によるスナップバックを防止
+                        seekingRef.current = true;
                         playerRef.current.seekTo(action.time, true);
+                        setTimeout(() => { seekingRef.current = false; }, 600);
                     } else if (action.kind === 'end') {
                         // ponytail: 500ms毎の再通知を1回に抑え、その場で止める。
                         // 連続再生ならApp側が次へ進める（onVideoEnd経由）
@@ -140,12 +133,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                 if (intervalRef.current) clearInterval(intervalRef.current);
             };
         }
-    }, [activeVideo, isPlayerReady, duration]);
-
-    const extractVideoId = (url: string) => {
-        const match = url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/);
-        return match ? match[1] : '';
-    };
+    }, [activeVideo, isPlayerReady, duration, stopOutsideSegment]);
 
     const videoId = activeVideo ? extractVideoId(activeVideo.youtubeUrl) : '';
     useEffect(() => {
@@ -165,14 +153,8 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                     setIsPlayerReady(true);
                     setDuration(event.target.getDuration());
 
-                    // 保存された最初の区間があればそこにシーク
-                    if (activeVideo && activeVideo.savedSegments.length > 0) {
-                        event.target.seekTo(activeVideo.savedSegments[0].start, true);
-                        lastSeekTimeRef.current = activeVideo.savedSegments[0].start;
-                    } else if (activeVideo?.startMarker) {
-                        event.target.seekTo(activeVideo.startMarker, true);
-                        lastSeekTimeRef.current = activeVideo.startMarker;
-                    }
+                    const seekTime = getInitialSeekTime(activeVideo?.savedSegments ?? [], activeVideo?.startMarker);
+                    if (seekTime != null) event.target.seekTo(seekTime, true);
 
                     // ponytail: 選択＝再生。ブロック時は自作再生ボタンで開始できる
                 event.target.playVideo();
@@ -205,17 +187,11 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             endedNotifiedRef.current = false;
             playerRef.current.seekTo(sec, true);
             setCurrentTime(sec);
-            lastSeekTimeRef.current = sec;
             playerRef.current.playVideo();
             playingRef.current = true;
         } catch (e) {
             console.error('Error during seekToSegment:', e);
         }
-    };
-
-    const setMarker = (type: 'start' | 'end') => {
-        if (type === 'start') setStartMarker(currentTime);
-        else setEndMarker(currentTime);
     };
 
     const handleSaveSegment = async () => {
@@ -263,18 +239,16 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Box ref={playerBoxRef} sx={{ flexGrow: 1, position: 'relative', bgcolor: '#000', borderRadius: 2, overflow: 'hidden' }}>
+            <Box sx={{ flexGrow: 1, position: 'relative', bgcolor: '#000', borderRadius: 2, overflow: 'hidden' }}>
                 <Box ref={playerDivRef} sx={{ position: 'absolute', inset: 0 }} />
             </Box>
 
             <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
                 <Stack spacing={2}>
                     <Box sx={{ position: 'relative', mx: 1.5 }}>
-                        <Slider
-                            value={currentTime}
-                            max={duration || 100}
-                            disabled
-                            sx={{ '& .MuiSlider-thumb': { display: 'none' } }}
+                        <LinearProgress
+                            variant="determinate"
+                            value={(currentTime / (duration || 1)) * 100}
                         />
                         {(startMarker !== null ? [{ value: startMarker, label: 'S' }] : [])
                             .concat(endMarker !== null ? [{ value: endMarker, label: 'E' }] : [])
@@ -313,7 +287,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                         <Button
                             variant="outlined"
                             startIcon={<Flag size={18} />}
-                            onClick={() => setMarker('start')}
+                            onClick={() => setStartMarker(currentTime)}
                             color={startMarker !== null ? 'primary' : 'inherit'}
                         >
                             Set Start
@@ -321,7 +295,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                         <Button
                             variant="outlined"
                             startIcon={<Flag size={18} style={{ transform: 'rotate(180deg)' }} />}
-                            onClick={() => setMarker('end')}
+                            onClick={() => setEndMarker(currentTime)}
                             color={endMarker !== null ? 'primary' : 'inherit'}
                         >
                             Set Stop

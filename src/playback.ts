@@ -10,6 +10,19 @@ export function getNextVideoIndex(currentIndex: number, count: number, loop: boo
     return null;
 }
 
+// ponytail: YouTube URLからvideoIdを抽出。PlayerSection_OnReady/isAutoPlaying共通
+export function extractVideoId(url: string): string {
+    const match = url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : '';
+}
+
+// ponytail: 初期シーク位置の決定。onReady/isAutoPlayingで同一ロジックを二重に書かない
+export function getInitialSeekTime(segments: VideoSegment[], startMarker?: number): number | null {
+    if (segments.length > 0) return segments[0].start;
+    if (startMarker != null) return startMarker;
+    return null;
+}
+
 export type SegmentAction =
     | { kind: 'continue' }
     | { kind: 'seek'; time: number }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getNextVideoIndex, resolveSegmentAction } from './playback';
+import { getNextVideoIndex, resolveSegmentAction, getInitialSeekTime, extractVideoId } from './playback';
 
 describe('getNextVideoIndex', () => {
     it('途中なら次へ進む（ループ無関係）', () => {
@@ -52,5 +52,32 @@ describe('resolveSegmentAction', () => {
         expect(
             resolveSegmentAction([{ start: 10, end: 20 }, { start: 30, end: 40 }], 29.8, true)
         ).toEqual({ kind: 'continue' });
+    });
+});
+
+describe('getInitialSeekTime', () => {
+    it('セグメントがあれば先頭のstart', () => {
+        expect(getInitialSeekTime([{ start: 10, end: 20 }, { start: 30, end: 40 }])).toBe(10);
+    });
+    it('セグメントなしでstartMarkerがあればそれを返す', () => {
+        expect(getInitialSeekTime([], 5)).toBe(5);
+    });
+    it('セグメントなしstartMarkerなしならnull', () => {
+        expect(getInitialSeekTime([])).toBeNull();
+    });
+    it('セグメントがあればstartMarkerは無視', () => {
+        expect(getInitialSeekTime([{ start: 10, end: 20 }], 99)).toBe(10);
+    });
+});
+
+describe('extractVideoId', () => {
+    it('通常のYouTube URL', () => {
+        expect(extractVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+    });
+    it('短縮URL', () => {
+        expect(extractVideoId('https://youtu.be/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+    });
+    it('不正なURLは空文字', () => {
+        expect(extractVideoId('https://example.com')).toBe('');
     });
 });
