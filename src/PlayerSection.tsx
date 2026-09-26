@@ -258,8 +258,59 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                                 { value: seg.end, label: `${i + 1}]`, type: 'segEnd' as const, segIndex: i }
                             ]))
                             .map((mark, i) => {
+                                // 移動先 next がマーカー種別の区間として他区間と重なるか、
+                                // または start/end の順序が逆転するか判定する。
+                                // 問題がある場合は true を返す（呼び出し側でエラーを表示する）
+                                const wouldOverlap = (next: number): { blocked: true; reason: string } | false => {
+                                    const segs = activeVideo.savedSegments;
+                                    let newStart: number;
+                                    let newEnd: number;
+                                    let otherSegs: typeof segs;
+
+                                    if (mark.type === 'start') {
+                                        newStart = next;
+                                        newEnd = endMarker ?? next;
+                                        otherSegs = segs;
+                                        // endMarker が設定済みなら逆転チェック
+                                        if (endMarker !== null && next >= endMarker) {
+                                            return { blocked: true, reason: '開始位置は終了位置より前にしてください。' };
+                                        }
+                                    } else if (mark.type === 'end') {
+                                        newStart = startMarker ?? next;
+                                        newEnd = next;
+                                        otherSegs = segs;
+                                        // startMarker が設定済みなら逆転チェック
+                                        if (startMarker !== null && next <= startMarker) {
+                                            return { blocked: true, reason: '終了位置は開始位置より後にしてください。' };
+                                        }
+                                    } else {
+                                        const self = segs[mark.segIndex];
+                                        newStart = mark.type === 'segStart' ? next : self.start;
+                                        newEnd   = mark.type === 'segEnd'   ? next : self.end;
+                                        otherSegs = segs.filter((_, idx) => idx !== mark.segIndex);
+                                        // 保存済み区間の逆転チェック
+                                        if (newStart >= newEnd) {
+                                            return { blocked: true, reason: mark.type === 'segStart'
+                                                ? '開始位置は終了位置より前にしてください。'
+                                                : '終了位置は開始位置より後にしてください。' };
+                                        }
+                                    }
+
+                                    if (newStart < newEnd && otherSegs.some(s => newStart < s.end && newEnd > s.start)) {
+                                        return { blocked: true, reason: '他の区間をまたぐため移動できません。' };
+                                    }
+                                    return false;
+                                };
+
                                 const nudge = async (delta: number) => {
                                     const next = Math.max(0, mark.value + delta);
+
+                                    const check = wouldOverlap(next);
+                                    if (check) {
+                                        setError(check.reason);
+                                        return;
+                                    }
+
                                     if (mark.type === 'start') {
                                         setStartMarker(next);
                                     } else if (mark.type === 'end') {
@@ -284,6 +335,33 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                                         }
                                     }
                                 };
+
+                                // ↯: 現在の再生位置へマーカーを移動。他区間をまたぐ/逆転する場合はブロック
+                                const snapToCurrent = async () => {
+                                    const next = currentTime;
+
+                                    const check = wouldOverlap(next);
+                                    if (check) {
+                                        setError(check.reason);
+                                        return;
+                                    }
+
+                                    const segs = activeVideo.savedSegments;
+                                    if (mark.type === 'start') {
+                                        setStartMarker(next);
+                                    } else if (mark.type === 'end') {
+                                        setEndMarker(next);
+                                    } else if (activeVideo.id != null) {
+                                        const updated = segs.map((s, idx) => {
+                                            if (idx !== mark.segIndex) return s;
+                                            return mark.type === 'segStart'
+                                                ? { ...s, start: next }
+                                                : { ...s, end: next };
+                                        });
+                                        await db.videos.update(activeVideo.id, { savedSegments: updated });
+                                    }
+                                };
+
                                 return (
                                     <Box
                                         key={i}
@@ -298,6 +376,23 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                                             lineHeight: 1,
                                         }}
                                     >
+                                        {(mark.type === 'start' || mark.type === 'segStart') && (
+                                            <Box
+                                                component="button"
+                                                onClick={snapToCurrent}
+                                                title="現在の再生位置に合わせる"
+                                                sx={{
+                                                    bgcolor: 'transparent',
+                                                    border: 'none',
+                                                    color: 'warning.main',
+                                                    fontSize: '0.8rem',
+                                                    cursor: 'pointer',
+                                                    p: '0 2px',
+                                                    lineHeight: 1,
+                                                    '&:hover': { color: 'warning.light' },
+                                                }}
+                                            >↯</Box>
+                                        )}
                                         <Box
                                             component="button"
                                             onClick={() => nudge(-1)}
@@ -346,6 +441,23 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                                                 '&:hover': { color: 'primary.light' },
                                             }}
                                         >▸</Box>
+                                        {(mark.type === 'end' || mark.type === 'segEnd') && (
+                                            <Box
+                                                component="button"
+                                                onClick={snapToCurrent}
+                                                title="現在の再生位置に合わせる"
+                                                sx={{
+                                                    bgcolor: 'transparent',
+                                                    border: 'none',
+                                                    color: 'warning.main',
+                                                    fontSize: '0.8rem',
+                                                    cursor: 'pointer',
+                                                    p: '0 2px',
+                                                    lineHeight: 1,
+                                                    '&:hover': { color: 'warning.light' },
+                                                }}
+                                            >↯</Box>
+                                        )}
                                     </Box>
                                 );
                             })
