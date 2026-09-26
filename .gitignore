@@ -22,3 +22,6 @@ npm-debug.log*
 # tool state
 .serena/
 .superpowers/
+.codegraph/
+plans/
+tasks/
