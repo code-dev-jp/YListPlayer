@@ -4,7 +4,7 @@ import {
     TextField, List, ListItem, Checkbox, FormControlLabel,
     Avatar, IconButton, Divider, Stack
 } from '@mui/material';
-import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle, Link } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle, Link, Pencil } from 'lucide-react';
 import { db, Video } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ConfirmDialog, { DialogState } from './ConfirmDialog';
@@ -168,6 +168,22 @@ const Sidebar: React.FC<SidebarProps> = ({
                 if (!ok || !name) return;
                 const id = await db.playlists.add({ name, createdAt: Date.now() });
                 onSelectPlaylist(id as number);
+            }
+        });
+    };
+
+    const handleRenamePlaylist = () => {
+        if (!activePlaylistId) return;
+        const current = playlists.find(p => p.id === activePlaylistId);
+        setDialog({
+            open: true,
+            variant: 'prompt',
+            title: 'プレイリスト名の変更',
+            message: '新しいプレイリスト名:',
+            defaultValue: current?.name ?? '',
+            onResult: async (ok, name) => {
+                if (!ok || !name || !activePlaylistId) return;
+                await db.playlists.update(activePlaylistId, { name });
             }
         });
     };
@@ -364,6 +380,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </FormControl>
                 <IconButton onClick={handleCreatePlaylist} color="primary">
                     <Plus size={24} />
+                </IconButton>
+                <IconButton onClick={handleRenamePlaylist} color="default" disabled={!activePlaylistId}>
+                    <Pencil size={20} />
                 </IconButton>
                 <IconButton onClick={handleDeletePlaylist} color="error" disabled={!activePlaylistId}>
                     <Trash2 size={24} />
