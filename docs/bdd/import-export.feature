@@ -1,5 +1,7 @@
 Feature: プレイリストの Export / Import
   プレイリストと動画をJSONファイルとして書き出し・読み込む。
+  また、プレイリストをURLクエリパラメータとしてエクスポートし、
+  そのURLを開くことでインポートできる。
 
   # No existing test coverage
 
@@ -26,3 +28,42 @@ Feature: プレイリストの Export / Import
     Given 既存の動画IDを持つJSONをインポートする
     When インポートを実行する
     Then 新しいプレイリストID・動画IDが割り当てられる
+
+  # --- URL Export / Import ---
+
+  # Inferred
+  Scenario: プレイリストをURLとしてエクスポートする
+    Given プレイリストが選択されており、1本以上の動画が含まれている
+    When "Export as URL" ボタンを押す
+    Then クリップボードにプレイリストデータを含む URL がコピーされる
+    And URL は ?playlist=<base64url> 形式のクエリパラメータを持つ
+
+  # Inferred
+  Scenario: URLを開くとプレイリストがインポートされる
+    Given ブラウザで ?playlist=<base64url> 付きの URL を開く
+    When アプリが起動する
+    Then 「URLからプレイリストをインポートしますか？」ダイアログが表示される
+    And 承認するとプレイリスト名の入力が求められる
+    And インポートが完了するとプレイリストが選択された状態になる
+    And URL からクエリパラメータが除去される
+
+  # Inferred
+  Scenario: URLのインポートをキャンセルする
+    Given ブラウザで ?playlist=<base64url> 付きの URL を開く
+    When ダイアログでキャンセルを押す
+    Then インポートは行われない
+    And URL からクエリパラメータが除去される
+
+  # Inferred
+  Scenario: URL長が上限を超えるとエクスポートに失敗する
+    Given 動画数が多くエンコード後の URL が 2000 文字を超えるプレイリストが選択されている
+    When "Export as URL" ボタンを押す
+    Then URL 長超過のエラーメッセージが表示される
+    And クリップボードへのコピーは行われない
+
+  # Inferred
+  Scenario: 不正なURLパラメータではインポートに失敗する
+    Given ブラウザで壊れた ?playlist=INVALID 付きの URL を開く
+    When アプリが起動する
+    Then エラーメッセージが表示される
+    And URL からクエリパラメータが除去される

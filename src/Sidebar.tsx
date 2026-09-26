@@ -4,10 +4,11 @@ import {
     TextField, List, ListItem, Checkbox, FormControlLabel,
     Avatar, IconButton, Divider, Stack
 } from '@mui/material';
-import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle, Link } from 'lucide-react';
 import { db, Video } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ConfirmDialog, { DialogState } from './ConfirmDialog';
+import { encodePlaylistToParam, PLAYLIST_PARAM } from './playlistUrl';
 import {
     DndContext,
     closestCenter,
@@ -280,6 +281,53 @@ const Sidebar: React.FC<SidebarProps> = ({
         reader.readAsText(file);
     };
 
+    const handleExportUrl = async () => {
+        if (!activePlaylistId) return;
+        const playlist = await db.playlists.get(activePlaylistId);
+        if (!playlist) return;
+        const playlistVideos = await db.videos
+            .where('playlistId')
+            .equals(activePlaylistId)
+            .sortBy('order');
+
+        // Step 1: エンコード（URL長超過はここで throw）
+        let url: string;
+        try {
+            const encoded = await encodePlaylistToParam(playlist, playlistVideos);
+            const base = `${location.origin}${location.pathname}`;
+            url = `${base}?${PLAYLIST_PARAM}=${encoded}`;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'URLの生成に失敗しました。';
+            setDialog({
+                open: true,
+                variant: 'alert',
+                title: 'エクスポート失敗',
+                message
+            });
+            return;
+        }
+
+        // Step 2: クリップボードにコピー（失敗時はURLをダイアログで表示）
+        try {
+            await navigator.clipboard.writeText(url);
+            setDialog({
+                open: true,
+                variant: 'alert',
+                title: 'URLをコピーしました',
+                message: 'プレイリストURLをクリップボードにコピーしました。'
+            });
+        } catch {
+            // クリップボードAPI が使えない環境: URLを選択・コピーできる形で表示
+            setDialog({
+                open: true,
+                variant: 'url-display',
+                title: 'プレイリストURL',
+                message: 'クリップボードへのコピーに失敗しました。下のURLを手動でコピーしてください。',
+                defaultValue: url
+            });
+        }
+    };
+
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event;
         if (over && active.id !== over.id) {
@@ -345,6 +393,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                             <input type="file" hidden accept=".json" onChange={handleImport} />
                         </Button>
                     </Stack>
+
+                    <Button
+                        fullWidth
+                        variant="outlined"
+                        size="small"
+                        startIcon={<Link size={16} />}
+                        onClick={handleExportUrl}
+                        sx={{ mb: 2 }}
+                    >
+                        Export as URL
+                    </Button>
 
                     <Box component="form" onSubmit={handleAddVideo} sx={{ mb: 3 }}>
                         <TextField
