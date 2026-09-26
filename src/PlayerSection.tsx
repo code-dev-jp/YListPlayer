@@ -250,36 +250,105 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                             variant="determinate"
                             value={(currentTime / (duration || 1)) * 100}
                         />
-                        {(startMarker !== null ? [{ value: startMarker, label: 'S' }] : [])
-                            .concat(endMarker !== null ? [{ value: endMarker, label: 'E' }] : [])
+                        {([] as { value: number; label: string; type: 'start' | 'end' | 'segStart' | 'segEnd'; segIndex: number }[])
+                            .concat(startMarker !== null ? [{ value: startMarker, label: 'S', type: 'start' as const, segIndex: -1 }] : [])
+                            .concat(endMarker !== null ? [{ value: endMarker, label: 'E', type: 'end' as const, segIndex: -1 }] : [])
                             .concat(activeVideo.savedSegments.flatMap((seg, i) => [
-                                { value: seg.start, label: `[${i + 1}` },
-                                { value: seg.end, label: `${i + 1}]` }
+                                { value: seg.start, label: `[${i + 1}`, type: 'segStart' as const, segIndex: i },
+                                { value: seg.end, label: `${i + 1}]`, type: 'segEnd' as const, segIndex: i }
                             ]))
-                            .map((mark, i) => (
-                                <Box
-                                    key={i}
-                                    component="button"
-                                    onClick={() => seekToSegment(mark.value)}
-                                    title={`${mark.label} に飛ぶ`}
-                                    sx={{
-                                        position: 'absolute',
-                                        bottom: '100%',
-                                        left: `${(mark.value / (duration || 100)) * 100}%`,
-                                        transform: 'translateX(-50%)',
-                                        bgcolor: 'transparent',
-                                        border: 'none',
-                                        color: 'primary.main',
-                                        fontWeight: 'bold',
-                                        fontSize: '0.7rem',
-                                        cursor: 'pointer',
-                                        p: 0,
-                                        '&:hover': { color: 'primary.light' },
-                                    }}
-                                >
-                                    {mark.label}
-                                </Box>
-                            ))
+                            .map((mark, i) => {
+                                const nudge = async (delta: number) => {
+                                    const next = Math.max(0, mark.value + delta);
+                                    if (mark.type === 'start') {
+                                        setStartMarker(next);
+                                    } else if (mark.type === 'end') {
+                                        setEndMarker(next);
+                                    } else if (activeVideo.id != null) {
+                                        const segs = activeVideo.savedSegments.map((s, idx) => {
+                                            if (idx !== mark.segIndex) return s;
+                                            return mark.type === 'segStart'
+                                                ? { ...s, start: next }
+                                                : { ...s, end: next };
+                                        });
+                                        await db.videos.update(activeVideo.id, { savedSegments: segs });
+                                    }
+                                    if (playerRef.current && isPlayerReady) {
+                                        try {
+                                            seekingRef.current = true;
+                                            playerRef.current.seekTo(next, true);
+                                            setCurrentTime(next);
+                                            setTimeout(() => { seekingRef.current = false; }, 600);
+                                        } catch (e) {
+                                            console.error('Error during nudge seek:', e);
+                                        }
+                                    }
+                                };
+                                return (
+                                    <Box
+                                        key={i}
+                                        sx={{
+                                            position: 'absolute',
+                                            bottom: '100%',
+                                            left: `${(mark.value / (duration || 100)) * 100}%`,
+                                            transform: 'translateX(-50%)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '2px',
+                                            lineHeight: 1,
+                                        }}
+                                    >
+                                        <Box
+                                            component="button"
+                                            onClick={() => nudge(-1)}
+                                            title="-1秒"
+                                            sx={{
+                                                bgcolor: 'transparent',
+                                                border: 'none',
+                                                color: 'primary.main',
+                                                fontSize: '0.75rem',
+                                                cursor: 'pointer',
+                                                p: '0 3px',
+                                                lineHeight: 1,
+                                                '&:hover': { color: 'primary.light' },
+                                            }}
+                                        >◂</Box>
+                                        <Box
+                                            component="button"
+                                            onClick={() => seekToSegment(mark.value)}
+                                            title={`${mark.label} に飛ぶ`}
+                                            sx={{
+                                                bgcolor: 'transparent',
+                                                border: 'none',
+                                                color: 'primary.main',
+                                                fontWeight: 'bold',
+                                                fontSize: '0.85rem',
+                                                cursor: 'pointer',
+                                                p: '0 2px',
+                                                lineHeight: 1,
+                                                '&:hover': { color: 'primary.light' },
+                                            }}
+                                        >
+                                            {mark.label}
+                                        </Box>
+                                        <Box
+                                            component="button"
+                                            onClick={() => nudge(+1)}
+                                            title="+1秒"
+                                            sx={{
+                                                bgcolor: 'transparent',
+                                                border: 'none',
+                                                color: 'primary.main',
+                                                fontSize: '0.75rem',
+                                                cursor: 'pointer',
+                                                p: '0 3px',
+                                                lineHeight: 1,
+                                                '&:hover': { color: 'primary.light' },
+                                            }}
+                                        >▸</Box>
+                                    </Box>
+                                );
+                            })
                         }
                     </Box>
 
