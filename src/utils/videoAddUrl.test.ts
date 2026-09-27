@@ -54,6 +54,17 @@ describe('videoAddUrl', () => {
             });
         });
 
+        it('playlistId が非数値なら null に落とす', () => {
+            const search = '?addVideoId=abc12345678&playlistId=not-a-number';
+            const params = getVideoAddParams(search);
+            expect(params).toEqual({
+                videoId: 'abc12345678',
+                title: 'abc12345678',
+                thumbnail: 'https://img.youtube.com/vi/abc12345678/default.jpg',
+                playlistId: null,
+            });
+        });
+
         it('addVideoId も videoId もない場合は null を返す', () => {
             const search = '?title=TestVideo';
             expect(getVideoAddParams(search)).toBeNull();

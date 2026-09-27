@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { Save, Flag, Trash2 } from 'lucide-react';
 import { db, Video } from '../utils/db';
-import { resolveSegmentAction, getInitialSeekTime, extractVideoId } from '../utils/playback';
+import { resolveSegmentAction, getInitialSeekTime, extractVideoId, validateSegmentInput } from '../utils/playback';
 
 // YouTube IFrame API の型定義（簡易版）
 declare global {
@@ -196,32 +196,20 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     };
 
     const handleSaveSegment = async () => {
-        if (startMarker === null || endMarker === null) {
-            setError('開始マーカーと終了マーカーの両方を設定してください。');
-            return;
-        }
-        if (startMarker >= endMarker) {
-            setError('開始位置は終了位置より前である必要があります。');
-            return;
-        }
-
-        const isOverlapping = activeVideo?.savedSegments.some(seg =>
-            (startMarker < seg.end && endMarker > seg.start)
-        );
-
-        if (isOverlapping) {
-            setError('既存の区間と重なっています。');
+        const validation = validateSegmentInput(startMarker, endMarker, activeVideo?.savedSegments ?? []);
+        if (!validation.valid) {
+            setError(validation.error);
             return;
         }
 
         if (activeVideo?.id) {
-            const newSegments = [...activeVideo.savedSegments, { start: startMarker, end: endMarker }];
+            const newSegments = [...activeVideo.savedSegments, { start: startMarker!, end: endMarker! }];
             newSegments.sort((a, b) => a.start - b.start);
 
             await db.videos.update(activeVideo.id, {
                 savedSegments: newSegments,
-                startMarker: startMarker,
-                endMarker: endMarker
+                startMarker: startMarker!,
+                endMarker: endMarker!
             });
 
             setStartMarker(null);

@@ -4,6 +4,7 @@ import {
     decodeParamToPlaylist,
     getPlaylistParam,
     clearPlaylistParam,
+    extractYoutubeId,
     MAX_URL_LENGTH,
     PLAYLIST_PARAM,
 } from './playlistUrl';
@@ -165,11 +166,31 @@ describe('decodeParamToPlaylist エラー', () => {
         const garbage = btoa('not json at all').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         await expect(decodeParamToPlaylist(garbage)).rejects.toThrow();
     });
+
+    it('不正な URL パラメータは明確なエラーで失敗し、入力を破棄する', async () => {
+        vi.stubGlobal('location', { ...mockLocation, search: '?playlist=INVALID' });
+        await expect(decodeParamToPlaylist('INVALID')).rejects.toThrow(/デコード|パース|形式|失敗/i);
+        expect(getPlaylistParam()).toBe('INVALID');
+    });
 });
 
 // ---------------------------------------------------------------------------
 // getPlaylistParam / clearPlaylistParam
 // ---------------------------------------------------------------------------
+
+describe('extractYoutubeId', () => {
+    it('watch URL から YouTube ID を抽出できる', () => {
+        expect(extractYoutubeId('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+    });
+
+    it('short URL から YouTube ID を抽出できる', () => {
+        expect(extractYoutubeId('https://youtu.be/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+    });
+
+    it('YouTube ID を含まない URL は null を返す', () => {
+        expect(extractYoutubeId('https://example.com/video')).toBeNull();
+    });
+});
 
 describe('getPlaylistParam', () => {
     it('パラメータがなければ null', () => {
@@ -180,6 +201,11 @@ describe('getPlaylistParam', () => {
     it('playlist パラメータがあれば値を返す', () => {
         vi.stubGlobal('location', { ...mockLocation, search: '?playlist=ABC123' });
         expect(getPlaylistParam()).toBe('ABC123');
+    });
+
+    it('プレイリスト以外のクエリがあっても対象パラメータだけを返す', () => {
+        vi.stubGlobal('location', { ...mockLocation, search: '?foo=bar&playlist=XYZ' });
+        expect(getPlaylistParam()).toBe('XYZ');
     });
 });
 

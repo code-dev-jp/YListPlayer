@@ -9,6 +9,7 @@ import { db, Video } from '../utils/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ConfirmDialog, { DialogState } from './ConfirmDialog';
 import { encodePlaylistToParam, PLAYLIST_PARAM } from '../utils/playlistUrl';
+import { reorderItems } from '../utils/playlistOrder';
 import { shortenUrl } from '../utils/shortenUrl';
 import {
     DndContext,
@@ -20,7 +21,6 @@ import {
     DragEndEvent,
 } from '@dnd-kit/core';
 import {
-    arrayMove,
     SortableContext,
     sortableKeyboardCoordinates,
     verticalListSortingStrategy,
@@ -359,15 +359,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event;
         if (over && active.id !== over.id) {
-            const oldIndex = videos.findIndex(v => v.id === active.id);
-            const newIndex = videos.findIndex(v => v.id === over.id);
-
-            const newItems = arrayMove(videos, oldIndex, newIndex);
-
-            // Update orders in DB
+            const newItems = reorderItems(videos, Number(active.id), Number(over.id));
             for (let i = 0; i < newItems.length; i++) {
                 if (newItems[i].id) {
-                    await db.videos.update(newItems[i].id!, { order: i });
+                    await db.videos.update(newItems[i].id, { order: i });
                 }
             }
         }
@@ -467,7 +462,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </Box>
 
                     <Divider sx={{ mb: 1 }} />
-                    
+
                     <Button
                         fullWidth
                         variant="contained"
@@ -518,7 +513,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </>
             )}
             <ConfirmDialog state={dialog} onChange={setDialog} />
-            
+
             {/* 拡張機能ダウンロードセクション */}
             {!isMobile && (
                 <>

@@ -51,3 +51,23 @@ export function resolveSegmentAction(segments: VideoSegment[], current: number, 
     }
     return { kind: 'continue' };
 }
+
+export function validateSegmentInput(
+    startMarker: number | null,
+    endMarker: number | null,
+    existingSegments: VideoSegment[] = []
+): { valid: true } | { valid: false; error: string } {
+    if (startMarker === null || endMarker === null) {
+        return { valid: false, error: '開始マーカーと終了マーカーの両方を設定してください。' };
+    }
+    if (startMarker >= endMarker) {
+        return { valid: false, error: '開始位置は終了位置より前である必要があります。' };
+    }
+    const isOverlapping = existingSegments.some(seg =>
+        startMarker < seg.end && endMarker > seg.start
+    );
+    if (isOverlapping) {
+        return { valid: false, error: '既存の区間と重なっています。' };
+    }
+    return { valid: true };
+}

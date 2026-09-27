@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { getNextVideoIndex, resolveSegmentAction, getInitialSeekTime, extractVideoId } from './playback';
+import {
+    getNextVideoIndex,
+    resolveSegmentAction,
+    getInitialSeekTime,
+    extractVideoId,
+    validateSegmentInput,
+} from './playback';
 
 describe('getNextVideoIndex', () => {
     it('途中なら次へ進む（ループ無関係）', () => {
@@ -52,6 +58,30 @@ describe('resolveSegmentAction', () => {
         expect(
             resolveSegmentAction([{ start: 10, end: 20 }, { start: 30, end: 40 }], 29.8, true)
         ).toEqual({ kind: 'continue' });
+    });
+});
+
+describe('validateSegmentInput', () => {
+    it('開始・終了が両方ある、かつ重なりがなければ valid', () => {
+        expect(validateSegmentInput(10, 20, [{ start: 30, end: 40 }])).toEqual({ valid: true });
+    });
+    it('開始か終了が未設定なら invalid', () => {
+        expect(validateSegmentInput(null, 20, [])).toEqual({
+            valid: false,
+            error: '開始マーカーと終了マーカーの両方を設定してください。',
+        });
+    });
+    it('開始が終了より後なら invalid', () => {
+        expect(validateSegmentInput(30, 20, [])).toEqual({
+            valid: false,
+            error: '開始位置は終了位置より前である必要があります。',
+        });
+    });
+    it('既存区間と重なるなら invalid', () => {
+        expect(validateSegmentInput(15, 25, [{ start: 20, end: 30 }])).toEqual({
+            valid: false,
+            error: '既存の区間と重なっています。',
+        });
     });
 });
 

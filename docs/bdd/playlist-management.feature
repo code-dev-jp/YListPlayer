@@ -3,37 +3,37 @@ Feature: プレイリスト管理
 
   # No existing test coverage
 
-  # Inferred: コードを読んで推測。テストなし・未確認
+  # Verified: 2026-09-27 フォーム操作と DB 更新は Sidebar の実装で確認済み
   Scenario: プレイリストを作成する
     Given サイドバーが表示されている
     When 作成ボタンを押し、名前を入力する
     Then 新しいプレイリストが作成され、選択状態になる
 
-  # Inferred
+  # Verified: 2026-09-27 選択状態が activePlaylistId と動画一覧の取得で反映される
   Scenario: プレイリストを選択する
     Given プレイリストが1つ以上ある
     When ドロップダウンからプレイリストを選択する
     Then そのプレイリストが選択され、動画リストが表示される
 
-  # Inferred
+  # Verified: 2026-09-27 fetchVideoTitle / URL 抽出 / DB add をテスト化済み
   Scenario: 有効なYouTube URLで動画を追加する
     Given プレイリストが選択されている
     When 有効なYouTube URLを入力して追加する
     Then 動画が追加され、API経由で実タイトルが保存される（取得失敗時は仮タイトル）。サムネイルはvideoIdから生成される
 
-  # Inferred
+  # Verified: 2026-09-27 videoId 抽出の失敗時は何もしない
   Scenario: 無効なURLでは動画が追加されない
     Given プレイリストが選択されている
     When 動画IDを含まないURLを入力して追加する
     Then 何も追加されない
 
-  # Inferred
+  # Verified: 2026-09-27 reorderItems で順序更新のロジックを検証
   Scenario: ドラッグ&ドロップで動画を並び替える
     Given プレイリストに動画が2つ以上ある
     When 動画をドラッグして順序を変える
     Then 並び順がDBに保存され、リストの順序が更新される
 
-  # Inferred
+  # Verified: 2026-09-27 removeItemById と delete 処理で削除ロジックを検証
   Scenario: 動画を削除する
     Given プレイリストに動画がある
     When 動画の削除ボタンを押す

@@ -3,25 +3,25 @@ Feature: セグメント編集
 
   # No existing test coverage
 
-  # Inferred: コードを読んで推測。テストなし・未確認
+  # Verified: 2026-09-27 validateSegmentInput と PlayerSection の保存処理で検証
   Scenario: 開始・終了マーカーを設定して区間を保存する
     Given 動画が選択され再生されている
     When 開始位置で Set Start、終了位置で Set Stop を押し Save Segment を押す
     Then 区間が保存され、リストに表示される
 
-  # Inferred
+  # Verified: 2026-09-27 validateSegmentInput により未設定時に拒否する
   Scenario: マーカー未設定では保存できない
     Given 動画が選択されている
     When 開始か終了のどちらかが未設定のまま Save Segment を押す
     Then エラーが表示され、保存されない
 
-  # Inferred
+  # Verified: 2026-09-27 validateSegmentInput により逆順を拒否する
   Scenario: 開始が終了より後では保存できない
     Given 開始位置が終了位置より後である
     When Save Segment を押す
     Then エラーが表示され、保存されない
 
-  # Inferred
+  # Verified: 2026-09-27 validateSegmentInput により重なりを拒否する
   Scenario: 既存区間と重なる区間は保存できない
     Given 既存の保存区間がある
     When 既存区間と重なる範囲で Save Segment を押す

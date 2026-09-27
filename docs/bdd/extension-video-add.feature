@@ -1,7 +1,7 @@
 Feature: ブラウザ拡張機能からの動画追加
   YouTube ページや拡張機能ポップアップから動画を追加し、登録結果は YListPlayer の画面で確認する。
 
-  # Verified: 2026-09-27 ユーザー指定の結果表示仕様を実装
+  # Verified: 2026-09-27 getVideoAddParams / clearVideoAddParams と App のトースト処理で検証
   Scenario: 拡張機能から動画を追加する
     Given YListPlayer が開いていて、追加先のプレイリストがある
     When YouTube ページまたは拡張機能ポップアップから動画を送信する
