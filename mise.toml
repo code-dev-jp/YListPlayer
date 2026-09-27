@@ -16,3 +16,7 @@ run = "npm run lint"
 [tasks.test]
 description = "Run Vitest"
 run = "npm run test"
+
+[tasks."ext:build"]
+description = "Build browser extension (Chrome zip + Firefox xpi) into dist-ext/"
+run = "node scripts/build-extension.mjs"

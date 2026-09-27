@@ -4,7 +4,7 @@ import {
     TextField, List, ListItem, Checkbox, FormControlLabel,
     Avatar, IconButton, Divider, Stack
 } from '@mui/material';
-import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle, Link, Pencil } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle, Link, Pencil, MonitorDown } from 'lucide-react';
 import { db, Video } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ConfirmDialog, { DialogState } from './ConfirmDialog';
@@ -490,6 +490,38 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </>
             )}
             <ConfirmDialog state={dialog} onChange={setDialog} />
+            
+            {/* 拡張機能ダウンロードセクション */}
+            <Divider sx={{ mt: 'auto', mb: 1.5 }} />
+            <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1, display: 'block' }}>
+                ブラウザ拡張機能
+            </Typography>
+            <Stack direction="row" spacing={1}>
+                <Button
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    startIcon={<MonitorDown size={14} />}
+                    component="a"
+                    href="/extensions/ylistplayer-chrome.zip"
+                    download="ylistplayer-chrome.zip"
+                    sx={{ fontSize: '0.7rem' }}
+                >
+                    Chrome
+                </Button>
+                <Button
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    startIcon={<MonitorDown size={14} />}
+                    component="a"
+                    href="/extensions/ylistplayer-firefox.xpi"
+                    download="ylistplayer-firefox.xpi"
+                    sx={{ fontSize: '0.7rem' }}
+                >
+                    Firefox
+                </Button>
+            </Stack>
         </Box>
     );
 };
