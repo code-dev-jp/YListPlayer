@@ -46,14 +46,24 @@ async function findYListPlayerTab(url) {
  * @param {number} timeoutMs  タイムアウト（ms）
  */
 async function sendViaBroadcastChannel(tabId, message, replyType, timeoutMs = 5000) {
-    // タブ内で BroadcastChannel 送受信を行うスクリプトを注入する
+    // タブ内で BroadcastChannel 送受信を行うスクリプトを注入する。
+    // ページ内のグローバルフラグで同時実行を防ぎ、1メッセージにつき1回だけ投げる。
     const results = await chrome.scripting.executeScript({
         target: { tabId },
+        world: 'MAIN',
         func: (channelName, msg, replyType, timeoutMs) => {
+            // ページ内フラグで同一チャンネル名の処理が進行中なら待機してから送信
+            const lockKey = `__ylistplayer_lock_${replyType}`;
+            if (window[lockKey]) {
+                return Promise.reject(new Error('BroadcastChannel request already in progress'));
+            }
+            window[lockKey] = true;
+
             return new Promise((resolve, reject) => {
                 const ch = new BroadcastChannel(channelName);
                 const timer = setTimeout(() => {
                     ch.close();
+                    window[lockKey] = false;
                     reject(new Error('BroadcastChannel timeout'));
                 }, timeoutMs);
 
@@ -61,6 +71,7 @@ async function sendViaBroadcastChannel(tabId, message, replyType, timeoutMs = 50
                     if (event.data?.type === replyType) {
                         clearTimeout(timer);
                         ch.close();
+                        window[lockKey] = false;
                         resolve(event.data);
                     }
                 };
@@ -74,7 +85,8 @@ async function sendViaBroadcastChannel(tabId, message, replyType, timeoutMs = 50
     if (results?.[0]?.result) {
         return results[0].result;
     }
-    throw new Error('executeScript returned no result');
+    // result が falsy（lock により弾かれた等）
+    throw new Error(results?.[0]?.error?.message || 'executeScript returned no result');
 }
 
 /**
