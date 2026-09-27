@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "YListPlayer Adder",
+  "version": "1.0.0",
+  "description": "YouTubeの動画をYListPlayerのプレイリストに追加する",
+
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/watch*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "YListPlayer Adder"
+  },
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ylistplayer-adder@local",
+      "strict_min_version": "109.0"
+    }
+  }
+}

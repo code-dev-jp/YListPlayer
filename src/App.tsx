@@ -108,6 +108,73 @@ function App() {
         }
     };
 
+    // ─── BroadcastChannel 受信ハンドラ（ブラウザ拡張機能との通信）─────────────
+    useEffect(() => {
+        const ch = new BroadcastChannel('ylistplayer');
+
+        ch.onmessage = async (event: MessageEvent) => {
+            const msg = event.data;
+            if (!msg?.type) return;
+
+            // ADD_VIDEO: 指定プレイリストに動画を追加する
+            if (msg.type === 'ADD_VIDEO') {
+                const { videoId, title, thumbnail, playlistId } = msg as {
+                    type: string;
+                    videoId: string;
+                    title: string;
+                    thumbnail: string;
+                    playlistId?: number | null;
+                };
+
+                try {
+                    // プレイリストIDが指定されていない場合は先頭のプレイリストを使う
+                    let targetPlaylistId: number | null = playlistId ?? null;
+                    if (!targetPlaylistId) {
+                        const playlists = await db.playlists.orderBy('createdAt').first();
+                        targetPlaylistId = playlists?.id ?? null;
+                    }
+
+                    if (!targetPlaylistId) {
+                        ch.postMessage({ type: 'ADD_VIDEO_DONE', ok: false, error: 'プレイリストが見つかりません。' });
+                        return;
+                    }
+
+                    const existing = await db.videos.where('playlistId').equals(targetPlaylistId).sortBy('order');
+                    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+                    await db.videos.add({
+                        playlistId: targetPlaylistId,
+                        youtubeUrl,
+                        title,
+                        thumbnail,
+                        order: existing.length,
+                        savedSegments: [],
+                    });
+
+                    ch.postMessage({ type: 'ADD_VIDEO_DONE', ok: true });
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : '動画の追加に失敗しました。';
+                    ch.postMessage({ type: 'ADD_VIDEO_DONE', ok: false, error: message });
+                }
+                return;
+            }
+
+            // GET_PLAYLISTS: プレイリスト一覧を返す
+            if (msg.type === 'GET_PLAYLISTS') {
+                try {
+                    const playlists = await db.playlists.orderBy('createdAt').toArray();
+                    ch.postMessage({ type: 'PLAYLISTS_RESULT', playlists });
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : 'プレイリストの取得に失敗しました。';
+                    ch.postMessage({ type: 'PLAYLISTS_RESULT', playlists: [], error: message });
+                }
+                return;
+            }
+        };
+
+        return () => ch.close();
+    }, []);
+
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />

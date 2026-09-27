@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YListPlayer Adder</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 320px;
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      background: #202124;
+      color: #e8eaed;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid #3c4043;
+    }
+    .header-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #e8eaed;
+    }
+    .header-icon {
+      font-size: 20px;
+    }
+
+    .section {
+      padding: 14px 16px;
+      border-bottom: 1px solid #3c4043;
+    }
+    .section:last-child { border-bottom: none; }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #9aa0a6;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: #bdc1c6;
+    }
+
+    input[type="text"], select {
+      width: 100%;
+      padding: 7px 10px;
+      background: #303134;
+      border: 1px solid #5f6368;
+      border-radius: 6px;
+      color: #e8eaed;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus, select:focus {
+      border-color: #8ab4f8;
+    }
+    select option {
+      background: #303134;
+      color: #e8eaed;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    button {
+      flex: 1;
+      padding: 7px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary {
+      background: #8ab4f8;
+      color: #202124;
+    }
+    .btn-primary:hover { background: #aecbfa; }
+    .btn-secondary {
+      background: #3c4043;
+      color: #e8eaed;
+    }
+    .btn-secondary:hover { background: #5f6368; }
+
+    .btn-add {
+      width: 100%;
+      padding: 9px;
+      background: #1a73e8;
+      color: #fff;
+      font-size: 14px;
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+    .btn-add:hover { background: #1558b0; }
+    .btn-add:disabled {
+      background: #5f6368;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 8px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: none;
+    }
+    .status.success { background: #1e3a2f; color: #81c995; display: block; }
+    .status.error   { background: #3c1f1f; color: #f28b82; display: block; }
+    .status.info    { background: #1c2b3a; color: #8ab4f8; display: block; }
+
+    .playlist-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .playlist-row select { flex: 1; }
+    .btn-refresh {
+      flex: 0 0 auto;
+      padding: 7px 10px;
+      font-size: 13px;
+      background: #3c4043;
+      color: #e8eaed;
+      border-radius: 6px;
+    }
+    .btn-refresh:hover { background: #5f6368; }
+
+    .hint {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #9aa0a6;
+    }
+
+    .current-video {
+      padding: 8px 10px;
+      background: #303134;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #bdc1c6;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .current-video.none { color: #9aa0a6; font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="header-icon">▶</span>
+    <span class="header-title">YListPlayer Adder</span>
+  </div>
+
+  <!-- 現在のタブ情報 -->
+  <div class="section">
+    <div class="section-title">現在のページ</div>
+    <div id="current-video" class="current-video none">YouTube の動画ページを開いてください</div>
+    <button id="btn-add-current" class="btn-add" disabled>＋ プレイリストに追加</button>
+    <div id="add-status" class="status"></div>
+  </div>
+
+  <!-- プレイリスト設定 -->
+  <div class="section">
+    <div class="section-title">デフォルトプレイリスト</div>
+    <div class="playlist-row">
+      <select id="select-playlist">
+        <option value="">（未選択）</option>
+      </select>
+      <button id="btn-refresh" class="btn-refresh" title="プレイリスト一覧を更新">↺</button>
+    </div>
+    <p class="hint">YouTube ページのボタンで使うプレイリストです。</p>
+    <div id="playlist-status" class="status"></div>
+  </div>
+
+  <!-- YListPlayer URL 設定 -->
+  <div class="section">
+    <div class="section-title">YListPlayer の URL</div>
+    <label for="input-url">アプリの URL</label>
+    <input type="text" id="input-url" placeholder="http://localhost:5173" />
+    <div class="btn-row">
+      <button id="btn-save-url" class="btn-primary">保存</button>
+      <button id="btn-open-url" class="btn-secondary">開く</button>
+    </div>
+    <div id="url-status" class="status"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
