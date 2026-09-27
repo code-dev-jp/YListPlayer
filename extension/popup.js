@@ -181,7 +181,7 @@ elBtnAddCurrent.addEventListener('click', async () => {
     elBtnAddCurrent.disabled = false;
 
     if (response?.ok) {
-        showStatus(elAddStatus, 'success', '追加しました！');
+        showStatus(elAddStatus, 'success', '送信しました。登録結果は YListPlayer の画面で確認してください。');
     } else {
         showStatus(elAddStatus, 'error', response?.error || '追加に失敗しました。');
     }

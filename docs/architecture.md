@@ -13,6 +13,12 @@ index.html → main.tsx → App.tsx
                          └── db.ts            （Dexie/IndexedDB）
 ```
 
+## ブラウザ拡張機能連携
+
+`extension/background.js` はバックエンドサーバーを必要とせず完全クライアントサイドで動作する。
+動画追加時は設定された YListPlayer URL に URL クエリパラメータ（`addVideoId`, `title`, `thumbnail`, `playlistId`）を付与してタブを開く（既存タブがある場合はそのタブの URL を更新して前面に移動する）。YListPlayer 画面（`src/App.tsx`）は起動時/表示時に URL パラメータを検知して IndexedDB に動画を登録し、結果を画面にトースト表示した上で URL パラメータを自動消去する。
+プレイリスト一覧取得は、開いている YListPlayer タブの IndexedDB から `chrome.scripting.executeScript` 経由で取得する。
+
 ## コンポーネント
 - **App.tsx**: アプリ全体の状態（activePlaylistId / activeVideoId / isAutoPlaying）を
   保持し、Sidebar と PlayerSection を組み合わせる。連続再生の「次へ」ロジックを持つ。

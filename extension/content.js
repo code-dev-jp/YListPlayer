@@ -149,7 +149,7 @@ async function handleAddVideo(defaultPlaylistId) {
     });
 
     if (response?.ok) {
-        btn.textContent = '✓ 追加済み';
+        btn.textContent = '✓ 送信済み';
         btn.style.background = '#188038';
         // 3秒後に元に戻す
         setTimeout(() => {
