@@ -22,6 +22,7 @@
     "dexie": "^4.3.0",
     "dexie-react-hooks": "^4.2.0",
     "lucide-react": "^0.574.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-player": "^3.4.0"

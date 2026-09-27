@@ -9,6 +9,7 @@ import { db, Video } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ConfirmDialog, { DialogState } from './ConfirmDialog';
 import { encodePlaylistToParam, PLAYLIST_PARAM } from './playlistUrl';
+import { shortenUrl } from './shortenUrl';
 import {
     DndContext,
     closestCenter,
@@ -299,7 +300,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         reader.readAsText(file);
     };
 
-    const handleExportUrl = async () => {
+    const handleExportUrl = async (shouldShorten: boolean = true) => {
         if (!activePlaylistId) return;
         const playlist = await db.playlists.get(activePlaylistId);
         if (!playlist) return;
@@ -309,11 +310,11 @@ const Sidebar: React.FC<SidebarProps> = ({
             .sortBy('order');
 
         // Step 1: エンコード（URL長超過はここで throw）
-        let url: string;
+        let rawUrl: string;
         try {
             const encoded = await encodePlaylistToParam(playlist, playlistVideos);
             const base = `${location.origin}${location.pathname}`;
-            url = `${base}?${PLAYLIST_PARAM}=${encoded}`;
+            rawUrl = `${base}?${PLAYLIST_PARAM}=${encoded}`;
         } catch (err) {
             const message = err instanceof Error ? err.message : 'URLの生成に失敗しました。';
             setDialog({
@@ -325,23 +326,32 @@ const Sidebar: React.FC<SidebarProps> = ({
             return;
         }
 
-        // Step 2: クリップボードにコピー（失敗時はURLをダイアログで表示）
+        // Step 2: zip1.io/api で URL を短縮 (shouldShorten が true の場合のみ。失敗時は rawUrl にフォールバック)
+        const finalUrl = shouldShorten ? await shortenUrl(rawUrl) : rawUrl;
+
+        // Step 3: クリップボードにコピー（失敗時は手動コピー用メッセージ） & QRコードダイアログを表示
+        const titleText = shouldShorten ? 'プレイリストURL（短縮QRコード）' : 'プレイリストURL（通常QRコード）';
         try {
-            await navigator.clipboard.writeText(url);
+            await navigator.clipboard.writeText(finalUrl);
             setDialog({
                 open: true,
-                variant: 'alert',
-                title: 'URLをコピーしました',
-                message: 'プレイリストURLをクリップボードにコピーしました。'
+                variant: 'qr-display',
+                title: titleText,
+                message: shouldShorten
+                    ? 'プレイリストURLを短縮してクリップボードにコピーしました。QRコードをスキャンして共有も可能です。'
+                    : 'プレイリストURLをクリップボードにコピーしました。QRコードをスキャンして共有も可能です。',
+                defaultValue: finalUrl,
+                qrValue: finalUrl
             });
         } catch {
-            // クリップボードAPI が使えない環境: URLを選択・コピーできる形で表示
+            // クリップボードAPI が使えない環境
             setDialog({
                 open: true,
-                variant: 'url-display',
-                title: 'プレイリストURL',
-                message: 'クリップボードへのコピーに失敗しました。下のURLを手動でコピーしてください。',
-                defaultValue: url
+                variant: 'qr-display',
+                title: titleText,
+                message: 'クリップボードへのコピーに失敗しました。下のURLを手動でコピーするか、QRコードをご利用ください。',
+                defaultValue: finalUrl,
+                qrValue: finalUrl
             });
         }
     };
@@ -417,16 +427,28 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 </Button>
                             </Stack>
 
-                            <Button
-                                fullWidth
-                                variant="outlined"
-                                size="small"
-                                startIcon={<Link size={16} />}
-                                onClick={handleExportUrl}
-                                sx={{ mb: 2 }}
-                            >
-                                URLでエクスポート
-                            </Button>
+                            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                                <Button
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<Link size={16} />}
+                                    onClick={() => handleExportUrl(true)}
+                                    sx={{ fontSize: '0.75rem', px: 1 }}
+                                >
+                                    URLでエクスポート (短縮)
+                                </Button>
+                                <Button
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<Link size={16} />}
+                                    onClick={() => handleExportUrl(false)}
+                                    sx={{ fontSize: '0.75rem', px: 1 }}
+                                >
+                                    URLでエクスポート (通常)
+                                </Button>
+                            </Stack>
                         </>
                     )}
 

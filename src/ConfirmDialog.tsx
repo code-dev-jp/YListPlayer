@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions,
-    Button, TextField, Typography
+    Button, TextField, Typography, Box
 } from '@mui/material';
+import { QRCodeSVG } from 'qrcode.react';
 
 export interface DialogState {
     open: boolean;
-    variant: 'alert' | 'confirm' | 'prompt' | 'url-display';
+    variant: 'alert' | 'confirm' | 'prompt' | 'url-display' | 'qr-display';
     title: string;
     message?: string;
     defaultValue?: string;
+    qrValue?: string;
     /** confirm variant のOKボタンのラベル（省略時は「削除」） */
     confirmLabel?: string;
     /** confirm variant のOKボタンの色（省略時は 'error'） */
@@ -40,6 +42,9 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ state, onChange }) => {
 
     const isPrompt = state.variant === 'prompt';
     const isUrlDisplay = state.variant === 'url-display';
+    const isQrDisplay = state.variant === 'qr-display';
+    const displayUrl = state.defaultValue ?? '';
+    const qrCodeValue = state.qrValue || displayUrl;
 
     return (
         <Dialog
@@ -52,7 +57,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ state, onChange }) => {
             </DialogTitle>
             <DialogContent sx={{ minWidth: 320 }}>
                 {state.message && (
-                    <Typography variant="body2" sx={{ mb: (isPrompt || isUrlDisplay) ? 2 : 0 }}>
+                    <Typography variant="body2" sx={{ mb: (isPrompt || isUrlDisplay || isQrDisplay) ? 2 : 0 }}>
                         {state.message}
                     </Typography>
                 )}
@@ -65,19 +70,24 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ state, onChange }) => {
                         onChange={(e) => setValue(e.target.value)}
                     />
                 )}
-                {isUrlDisplay && (
+                {(isUrlDisplay || isQrDisplay) && (
                     <TextField
                         fullWidth
                         size="small"
-                        value={state.defaultValue ?? ''}
+                        value={displayUrl}
                         InputProps={{ readOnly: true }}
                         onFocus={(e) => e.target.select()}
-                        sx={{ fontFamily: 'monospace' }}
+                        sx={{ fontFamily: 'monospace', mb: isQrDisplay ? 2 : 0 }}
                     />
+                )}
+                {isQrDisplay && qrCodeValue && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 2, bgcolor: 'white', borderRadius: 2 }}>
+                        <QRCodeSVG value={qrCodeValue} size={200} marginSize={2} />
+                    </Box>
                 )}
             </DialogContent>
             <DialogActions>
-                {state.variant !== 'alert' && state.variant !== 'url-display' && (
+                {state.variant !== 'alert' && state.variant !== 'url-display' && state.variant !== 'qr-display' && (
                     <Button onClick={() => close(false)}>キャンセル</Button>
                 )}
                 <Button

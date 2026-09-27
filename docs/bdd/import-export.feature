@@ -31,12 +31,23 @@ Feature: プレイリストの Export / Import
 
   # --- URL Export / Import ---
 
-  # Inferred
-  Scenario: プレイリストをURLとしてエクスポートする
+  # Verified
+  Scenario: プレイリストを短縮URLとしてエクスポートする
     Given プレイリストが選択されており、1本以上の動画が含まれている
-    When "Export as URL" ボタンを押す
-    Then クリップボードにプレイリストデータを含む URL がコピーされる
-    And URL は ?playlist=<base64url> 形式のクエリパラメータを持つ
+    When デスクトップ画面で "URLでエクスポート (短縮)" ボタンを押す
+    Then longUrl が生成され zip1.io/api により短縮URLが発行される
+    And 短縮URLがクリップボードにコピーされる
+    And ダイアログに短縮URLとQRコードが表示される
+
+  # Verified
+  Scenario: プレイリストを通常URLとしてエクスポートする
+    Given プレイリストが選択されており、1本以上の動画が含まれている
+    When デスクトップ画面で "URLでエクスポート (通常)" ボタンを押す
+    Then 通常の longUrl が生成され短縮APIは呼び出されない
+    And 通常の URL がクリップボードにコピーされる
+    And ダイアログに通常URLとQRコードが表示される
+
+
 
   # Inferred
   Scenario: URLを開くとプレイリストがインポートされる
