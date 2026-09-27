@@ -10,7 +10,7 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://www.youtube.com/*"
+    "<all_urls>"
   ],
 
   "background": {
