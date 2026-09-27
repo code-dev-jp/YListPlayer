@@ -9,12 +9,21 @@
  */
 
 const CHANNEL_NAME = 'ylistplayer';
-const REQUEST_TIMEOUT_MS = 10000; // タブ起動待ちの最大待機時間
+const REQUEST_TIMEOUT_MS = 10000;
 
-/**
- * chrome.storage.sync から YListPlayer の URL を取得する。
- * 未設定の場合は null を返す。
- */
+// ─── グローバルロック（処理の重複実行を防ぐ）─────────────────────────────────
+// Service Worker はリクエストごとに起動するが、同一 SW インスタンス内では
+// 複数の onMessage が並走しうるため Promise ベースのロックで直列化する。
+let _pendingRequest = Promise.resolve();
+
+function withLock(fn) {
+    const next = _pendingRequest.then(() => fn()).catch(() => fn());
+    _pendingRequest = next.catch(() => {});
+    return next;
+}
+
+// ─── ストレージ ───────────────────────────────────────────────────────────────
+
 async function getYListPlayerUrl() {
     return new Promise((resolve) => {
         chrome.storage.sync.get(['ylistPlayerUrl'], (result) => {
@@ -23,36 +32,37 @@ async function getYListPlayerUrl() {
     });
 }
 
-/**
- * 開いているタブの中から YListPlayer のタブを探す。
- * 複数あれば最初の1件を返す。
- */
-async function findYListPlayerTab(url) {
-    const origin = new URL(url).origin;
-    const tabs = await chrome.tabs.query({ url: `${origin}/*` });
-    return tabs[0] || null;
-}
+// ─── タブ検索 ─────────────────────────────────────────────────────────────────
 
 /**
- * BroadcastChannel を使って YListPlayer タブにメッセージを送り、
- * 返信を待って resolve する。
+ * 開いているタブの中から YListPlayer のタブを探す。
+ * - オリジン一致（末尾スラッシュや hash の違いを吸収）
+ * - status が complete のものを優先し、なければ loading も対象にする
+ */
+async function findYListPlayerTab(url) {
+    // 末尾スラッシュ等を正規化してオリジンを取り出す
+    const origin = new URL(url.trim()).origin;
+    const tabs = await chrome.tabs.query({ url: `${origin}/*` });
+    console.log(`[YListPlayer] findYListPlayerTab: origin=${origin}, found=${tabs.length}`);
+    if (tabs.length === 0) return null;
+    // complete なタブを優先
+    return tabs.find(t => t.status === 'complete') ?? tabs[0];
+}
+
+// ─── BroadcastChannel 送受信 ──────────────────────────────────────────────────
+
+/**
+ * YListPlayer タブ内に executeScript でスクリプトを注入し、
+ * BroadcastChannel 経由でメッセージを送って返信を待つ。
  *
- * Service Worker 内では BroadcastChannel は使えないため、
- * chrome.scripting.executeScript でタブ内スクリプトとして実行する。
- *
- * @param {number} tabId      送信先タブID
- * @param {object} message    送信するメッセージオブジェクト
- * @param {string} replyType  待受する返信の type 文字列
- * @param {number} timeoutMs  タイムアウト（ms）
+ * world:'MAIN' でページ本体の window を共有し、
+ * ページ内グローバルフラグで二重送信をブロックする。
  */
 async function sendViaBroadcastChannel(tabId, message, replyType, timeoutMs = 5000) {
-    // タブ内で BroadcastChannel 送受信を行うスクリプトを注入する。
-    // ページ内のグローバルフラグで同時実行を防ぎ、1メッセージにつき1回だけ投げる。
     const results = await chrome.scripting.executeScript({
         target: { tabId },
         world: 'MAIN',
         func: (channelName, msg, replyType, timeoutMs) => {
-            // ページ内フラグで同一チャンネル名の処理が進行中なら待機してから送信
             const lockKey = `__ylistplayer_lock_${replyType}`;
             if (window[lockKey]) {
                 return Promise.reject(new Error('BroadcastChannel request already in progress'));
@@ -85,18 +95,12 @@ async function sendViaBroadcastChannel(tabId, message, replyType, timeoutMs = 50
     if (results?.[0]?.result) {
         return results[0].result;
     }
-    // result が falsy（lock により弾かれた等）
     throw new Error(results?.[0]?.error?.message || 'executeScript returned no result');
 }
 
-/**
- * YListPlayer が起動するまで待機する（ポーリング）。
- * タブが読み込み完了後、PING に応答するまで待つ。
- */
-async function waitForYListPlayer(tabId, timeoutMs = REQUEST_TIMEOUT_MS) {
-    const start = Date.now();
+// ─── タブ起動待ち ─────────────────────────────────────────────────────────────
 
-    // タブの読み込み完了を待つ
+async function waitForYListPlayer(tabId, timeoutMs = REQUEST_TIMEOUT_MS) {
     await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('Tab load timeout')), timeoutMs);
         const listener = (updatedTabId, changeInfo) => {
@@ -108,14 +112,16 @@ async function waitForYListPlayer(tabId, timeoutMs = REQUEST_TIMEOUT_MS) {
         };
         chrome.tabs.onUpdated.addListener(listener);
     });
-
-    // BroadcastChannel の受信ハンドラが立ち上がるまで少し待つ
+    // BroadcastChannel 受信ハンドラが立ち上がるまで待つ
     await new Promise(r => setTimeout(r, 800));
 }
 
+// ─── タブ取得または作成 ───────────────────────────────────────────────────────
+
 /**
  * YListPlayer タブを取得または作成する。
- * 新規作成の場合は isNew: true を返す。
+ * findYListPlayerTab と tabs.create の間に競合が起きないよう
+ * 呼び出し側でグローバルロックを取ること。
  */
 async function getOrCreateTab(ylistUrl) {
     const existing = await findYListPlayerTab(ylistUrl);
@@ -126,67 +132,59 @@ async function getOrCreateTab(ylistUrl) {
     return { tab, isNew: true };
 }
 
-/**
- * ADD_VIDEO リクエストを処理する。
- * - YListPlayer タブを探す or 作成
- * - BroadcastChannel で ADD_VIDEO を送信
- * - 完了後、自動で開いたタブなら閉じる
- */
+// ─── ハンドラ ─────────────────────────────────────────────────────────────────
+
 async function handleAddVideo({ videoId, title, thumbnail, playlistId }) {
     const ylistUrl = await getYListPlayerUrl();
     if (!ylistUrl) {
         throw new Error('YListPlayer の URL が設定されていません。拡張機能のポップアップから設定してください。');
     }
 
-    const { tab, isNew } = await getOrCreateTab(ylistUrl);
+    // グローバルロックで直列化：findTab → create → send を atomic に扱う
+    return withLock(async () => {
+        const { tab, isNew } = await getOrCreateTab(ylistUrl);
 
-    try {
-        if (isNew) {
-            await waitForYListPlayer(tab.id);
+        try {
+            if (isNew) {
+                await waitForYListPlayer(tab.id);
+            }
+            return await sendViaBroadcastChannel(
+                tab.id,
+                { type: 'ADD_VIDEO', videoId, title, thumbnail, playlistId },
+                'ADD_VIDEO_DONE'
+            );
+        } finally {
+            if (isNew) {
+                chrome.tabs.remove(tab.id);
+            }
         }
-
-        const result = await sendViaBroadcastChannel(
-            tab.id,
-            { type: 'ADD_VIDEO', videoId, title, thumbnail, playlistId },
-            'ADD_VIDEO_DONE'
-        );
-        return result;
-    } finally {
-        // 自動で開いたタブは閉じる
-        if (isNew) {
-            chrome.tabs.remove(tab.id);
-        }
-    }
+    });
 }
 
-/**
- * GET_PLAYLISTS リクエストを処理する。
- * YListPlayer からプレイリスト一覧を取得して返す。
- */
 async function handleGetPlaylists() {
     const ylistUrl = await getYListPlayerUrl();
     if (!ylistUrl) {
         throw new Error('YListPlayer の URL が設定されていません。');
     }
 
-    const { tab, isNew } = await getOrCreateTab(ylistUrl);
+    return withLock(async () => {
+        const { tab, isNew } = await getOrCreateTab(ylistUrl);
 
-    try {
-        if (isNew) {
-            await waitForYListPlayer(tab.id);
+        try {
+            if (isNew) {
+                await waitForYListPlayer(tab.id);
+            }
+            return await sendViaBroadcastChannel(
+                tab.id,
+                { type: 'GET_PLAYLISTS' },
+                'PLAYLISTS_RESULT'
+            );
+        } finally {
+            if (isNew) {
+                chrome.tabs.remove(tab.id);
+            }
         }
-
-        const result = await sendViaBroadcastChannel(
-            tab.id,
-            { type: 'GET_PLAYLISTS' },
-            'PLAYLISTS_RESULT'
-        );
-        return result;
-    } finally {
-        if (isNew) {
-            chrome.tabs.remove(tab.id);
-        }
-    }
+    });
 }
 
 // ─── メッセージルーター ───────────────────────────────────────────────────────
@@ -196,7 +194,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         handleAddVideo(message)
             .then((result) => sendResponse({ ok: true, result }))
             .catch((err) => sendResponse({ ok: false, error: err.message }));
-        return true; // 非同期応答
+        return true;
     }
 
     if (message.type === 'GET_PLAYLISTS') {
