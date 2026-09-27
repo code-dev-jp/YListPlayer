@@ -40,7 +40,7 @@ function App() {
                         open: true,
                         variant: 'prompt',
                         title: 'インポート先のプレイリスト名',
-                        defaultValue: `${data.name} (Imported)`,
+                        defaultValue: `${data.name}（インポート済み）`,
                         onResult: async (ok2, name) => {
                             if (!ok2 || !name) return;
                             const newPlaylistId = await db.playlists.add({

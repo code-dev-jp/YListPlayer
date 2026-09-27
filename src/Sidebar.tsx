@@ -110,7 +110,7 @@ const SortableVideoItem = ({ video, isActive, onSelect, onDelete }: any) => {
                     </Typography>
                     {video.savedSegments?.length > 0 && (
                         <Typography variant="caption" sx={{ color: isActive ? 'rgba(255,255,255,0.7)' : 'text.secondary' }}>
-                            {video.savedSegments.length} segments
+                            {video.savedSegments.length}個の区間
                         </Typography>
                     )}
                 </Box>
@@ -290,7 +290,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     open: true,
                     variant: 'alert',
                     title: 'インポート失敗',
-                    message: 'Failed to import playlist'
+                    message: 'プレイリストのインポートに失敗しました。'
                 });
             }
         };
@@ -363,7 +363,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     return (
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>My Playlists</Typography>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>マイプレイリスト</Typography>
 
             <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
                 <FormControl fullWidth size="small">
@@ -372,7 +372,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         onChange={(e) => onSelectPlaylist(e.target.value as number)}
                         displayEmpty
                     >
-                        <MenuItem value="" disabled>Select Playlist</MenuItem>
+                        <MenuItem value="" disabled>プレイリストを選択</MenuItem>
                         {playlists.map((p) => (
                             <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                         ))}
@@ -399,7 +399,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             startIcon={<Download size={16} />}
                             onClick={handleExport}
                         >
-                            Export
+                            エクスポート
                         </Button>
                         <Button
                             fullWidth
@@ -408,7 +408,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             component="label"
                             startIcon={<Upload size={16} />}
                         >
-                            Import
+                            インポート
                             <input type="file" hidden accept=".json" onChange={handleImport} />
                         </Button>
                     </Stack>
@@ -421,7 +421,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         onClick={handleExportUrl}
                         sx={{ mb: 2 }}
                     >
-                        Export as URL
+                        URLでエクスポート
                     </Button>
 
                     <Box component="form" onSubmit={handleAddVideo} sx={{ mb: 3 }}>
@@ -434,7 +434,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             sx={{ mb: 1 }}
                         />
                         <Button fullWidth variant="contained" type="submit" size="small">
-                            Add Video
+                            動画を追加
                         </Button>
                     </Box>
 
@@ -449,7 +449,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         onClick={onPlayPlaylist}
                         disabled={videos.length === 0}
                     >
-                        Play All
+                        すべて再生
                     </Button>
 
 

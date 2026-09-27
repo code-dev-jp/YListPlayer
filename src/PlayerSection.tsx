@@ -232,7 +232,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     if (!activeVideo) {
         return (
             <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#000', borderRadius: 2 }}>
-                <Typography color="grey.600">Please select a video from the sidebar</Typography>
+                <Typography color="grey.600">サイドバーから動画を選択してください</Typography>
             </Box>
         );
     }
@@ -471,7 +471,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                             onClick={() => setStartMarker(currentTime)}
                             color={startMarker !== null ? 'primary' : 'inherit'}
                         >
-                            Set Start
+                            開始点をセット
                         </Button>
                         <Button
                             variant="outlined"
@@ -479,7 +479,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                             onClick={() => setEndMarker(currentTime)}
                             color={endMarker !== null ? 'primary' : 'inherit'}
                         >
-                            Set Stop
+                            終了点をセット
                         </Button>
                         <Button
                             variant="contained"
@@ -487,7 +487,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                             onClick={handleSaveSegment}
                             disabled={startMarker === null || endMarker === null}
                         >
-                            Save Segment
+                            区間を保存
                         </Button>
 
                         <Box sx={{ flexGrow: 1 }} />
