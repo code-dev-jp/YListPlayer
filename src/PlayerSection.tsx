@@ -19,9 +19,10 @@ interface PlayerSectionProps {
     activeVideo: Video | null;
     onVideoEnd: () => void;
     isAutoPlaying: boolean;
+    isMobile?: boolean;
 }
 
-const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, isAutoPlaying }) => {
+const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, isAutoPlaying, isMobile = false }) => {
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [startMarker, setStartMarker] = useState<number | null>(null);
@@ -231,19 +232,39 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
 
     if (!activeVideo) {
         return (
-            <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#000', borderRadius: 2 }}>
-                <Typography color="grey.600">サイドバーから動画を選択してください</Typography>
+            <Box sx={{
+                width: '100%',
+                aspectRatio: isMobile ? '16/9' : undefined,
+                flexGrow: isMobile ? undefined : 1,
+                minHeight: isMobile ? '200px' : undefined,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: '#000',
+                borderRadius: 2
+            }}>
+                <Typography color="grey.600" sx={{ textAlign: 'center' }}>動画を選択してください</Typography>
             </Box>
         );
     }
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Box sx={{ flexGrow: 1, position: 'relative', bgcolor: '#000', borderRadius: 2, overflow: 'hidden' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : '100%' }}>
+            <Box sx={{
+                width: '100%',
+                aspectRatio: isMobile ? '16/9' : undefined,
+                flexGrow: isMobile ? undefined : 1,
+                minHeight: isMobile ? '200px' : undefined,
+                position: 'relative',
+                bgcolor: '#000',
+                borderRadius: 2,
+                overflow: 'hidden'
+            }}>
                 <Box ref={playerDivRef} sx={{ position: 'absolute', inset: 0 }} />
             </Box>
 
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
+            {!isMobile && (
+                <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
                 <Stack spacing={2}>
                     <Box sx={{ position: 'relative', mx: 1.5 }}>
                         <LinearProgress
@@ -505,6 +526,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                     </Stack>
                 </Stack>
             </Box>
+            )}
 
             <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2, flexGrow: 0, overflowY: 'auto', maxHeight: '150px' }}>
                 <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>保存済み区間リスト</Typography>

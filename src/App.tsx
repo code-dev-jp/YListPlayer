@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ThemeProvider, CssBaseline, Box, Grid, Snackbar, Alert } from '@mui/material';
+import { ThemeProvider, CssBaseline, Box, Grid, Snackbar, Alert, useMediaQuery } from '@mui/material';
 import theme from './theme';
 import Sidebar from './Sidebar';
 import PlayerSection from './PlayerSection';
@@ -11,6 +11,7 @@ import { getVideoAddParams, clearVideoAddParams } from './videoAddUrl';
 import ConfirmDialog, { DialogState } from './ConfirmDialog';
 
 function App() {
+    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     const [activePlaylistId, setActivePlaylistId] = useState<number | null>(null);
     const [activeVideoId, setActiveVideoId] = useState<number | null>(null);
     const [isAutoPlaying, setIsAutoPlaying] = useState(false);
@@ -161,19 +162,20 @@ function App() {
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
-            <Box sx={{ flexGrow: 1, height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <Grid container sx={{ flexGrow: 1, height: '100%', overflow: 'hidden' }}>
-                    {/* Main Player Section (80%) */}
-                    <Grid sx={{ height: '100%', display: 'flex', flexDirection: 'column', p: 2, borderRight: '1px solid #333', flexBasis: '80%', flexGrow: 0, maxWidth: '80%' }}>
+            {isMobile ? (
+                <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default', overflowY: 'auto', p: 1 }}>
+                    {/* 1. Player Section (Player + Saved Segments) */}
+                    <Box sx={{ width: '100%', mb: 2 }}>
                         <PlayerSection
                             activeVideo={activeVideo}
                             onVideoEnd={handleVideoEnd}
                             isAutoPlaying={isAutoPlaying}
+                            isMobile={true}
                         />
-                    </Grid>
+                    </Box>
 
-                    {/* Sidebar Section (20%) */}
-                    <Grid sx={{ height: '100%', p: 2, bgcolor: 'background.paper', overflowY: 'auto', flexBasis: '20%', flexGrow: 0, maxWidth: '20%' }}>
+                    {/* 2. Sidebar Section (Playlist Select + Add Video + Video List) */}
+                    <Box sx={{ width: '100%', p: 1, bgcolor: 'background.paper', borderRadius: 2 }}>
                         <Sidebar
                             activePlaylistId={activePlaylistId}
                             onSelectPlaylist={setActivePlaylistId}
@@ -182,10 +184,39 @@ function App() {
                             onPlayPlaylist={handlePlayPlaylist}
                             isLoop={isLoop}
                             onToggleLoop={setIsLoop}
+                            isMobile={true}
                         />
+                    </Box>
+                </Box>
+            ) : (
+                <Box sx={{ flexGrow: 1, height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <Grid container sx={{ flexGrow: 1, height: '100%', overflow: 'hidden' }}>
+                        {/* Main Player Section (80%) */}
+                        <Grid sx={{ height: '100%', display: 'flex', flexDirection: 'column', p: 2, borderRight: '1px solid #333', flexBasis: '80%', flexGrow: 0, maxWidth: '80%' }}>
+                            <PlayerSection
+                                activeVideo={activeVideo}
+                                onVideoEnd={handleVideoEnd}
+                                isAutoPlaying={isAutoPlaying}
+                                isMobile={false}
+                            />
+                        </Grid>
+
+                        {/* Sidebar Section (20%) */}
+                        <Grid sx={{ height: '100%', p: 2, bgcolor: 'background.paper', overflowY: 'auto', flexBasis: '20%', flexGrow: 0, maxWidth: '20%' }}>
+                            <Sidebar
+                                activePlaylistId={activePlaylistId}
+                                onSelectPlaylist={setActivePlaylistId}
+                                onSelectVideo={handleSelectVideo}
+                                activeVideoId={activeVideoId}
+                                onPlayPlaylist={handlePlayPlaylist}
+                                isLoop={isLoop}
+                                onToggleLoop={setIsLoop}
+                                isMobile={false}
+                            />
+                        </Grid>
                     </Grid>
-                </Grid>
-            </Box>
+                </Box>
+            )}
             <ConfirmDialog state={dialog} onChange={setDialog} />
 
             {/* 拡張機能からの動画追加トースト通知 */}

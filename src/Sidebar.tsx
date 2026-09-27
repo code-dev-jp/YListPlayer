@@ -35,6 +35,7 @@ interface SidebarProps {
     onPlayPlaylist: () => void;
     isLoop: boolean;
     onToggleLoop: (v: boolean) => void;
+    isMobile?: boolean;
 }
 
 const SortableVideoItem = ({ video, isActive, onSelect, onDelete }: any) => {
@@ -141,7 +142,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     activeVideoId,
     onPlayPlaylist,
     isLoop,
-    onToggleLoop
+    onToggleLoop,
+    isMobile = false
 }) => {
     const [url, setUrl] = useState('');
     const [dialog, setDialog] = useState<DialogState>({ open: false, variant: 'alert', title: '' });
@@ -362,7 +364,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
 
     return (
-        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column' }}>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>マイプレイリスト</Typography>
 
             <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
@@ -391,38 +393,42 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             {activePlaylistId && (
                 <>
-                    <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                        <Button
-                            fullWidth
-                            variant="outlined"
-                            size="small"
-                            startIcon={<Download size={16} />}
-                            onClick={handleExport}
-                        >
-                            エクスポート
-                        </Button>
-                        <Button
-                            fullWidth
-                            variant="outlined"
-                            size="small"
-                            component="label"
-                            startIcon={<Upload size={16} />}
-                        >
-                            インポート
-                            <input type="file" hidden accept=".json" onChange={handleImport} />
-                        </Button>
-                    </Stack>
+                    {!isMobile && (
+                        <>
+                            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                                <Button
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<Download size={16} />}
+                                    onClick={handleExport}
+                                >
+                                    エクスポート
+                                </Button>
+                                <Button
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                    component="label"
+                                    startIcon={<Upload size={16} />}
+                                >
+                                    インポート
+                                    <input type="file" hidden accept=".json" onChange={handleImport} />
+                                </Button>
+                            </Stack>
 
-                    <Button
-                        fullWidth
-                        variant="outlined"
-                        size="small"
-                        startIcon={<Link size={16} />}
-                        onClick={handleExportUrl}
-                        sx={{ mb: 2 }}
-                    >
-                        URLでエクスポート
-                    </Button>
+                            <Button
+                                fullWidth
+                                variant="outlined"
+                                size="small"
+                                startIcon={<Link size={16} />}
+                                onClick={handleExportUrl}
+                                sx={{ mb: 2 }}
+                            >
+                                URLでエクスポート
+                            </Button>
+                        </>
+                    )}
 
                     <Box component="form" onSubmit={handleAddVideo} sx={{ mb: 3 }}>
                         <TextField
@@ -474,7 +480,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             items={videos.map(v => v.id!)}
                             strategy={verticalListSortingStrategy}
                         >
-                            <List sx={{ flexGrow: 1, overflowY: 'auto' }}>
+                            <List sx={{ flexGrow: 1, overflowY: isMobile ? 'visible' : 'auto' }}>
                                 {videos.map((video) => (
                                     <SortableVideoItem
                                         key={video.id}
@@ -492,36 +498,40 @@ const Sidebar: React.FC<SidebarProps> = ({
             <ConfirmDialog state={dialog} onChange={setDialog} />
             
             {/* 拡張機能ダウンロードセクション */}
-            <Divider sx={{ mt: 'auto', mb: 1.5 }} />
-            <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1, display: 'block' }}>
-                ブラウザ拡張機能
-            </Typography>
-            <Stack direction="row" spacing={1}>
-                <Button
-                    fullWidth
-                    variant="outlined"
-                    size="small"
-                    startIcon={<MonitorDown size={14} />}
-                    component="a"
-                    href="/extensions/ylistplayer-chrome.zip"
-                    download="ylistplayer-chrome.zip"
-                    sx={{ fontSize: '0.7rem' }}
-                >
-                    Chrome
-                </Button>
-                <Button
-                    fullWidth
-                    variant="outlined"
-                    size="small"
-                    startIcon={<MonitorDown size={14} />}
-                    component="a"
-                    href="/extensions/ylistplayer-firefox.xpi"
-                    download="ylistplayer-firefox.xpi"
-                    sx={{ fontSize: '0.7rem' }}
-                >
-                    Firefox
-                </Button>
-            </Stack>
+            {!isMobile && (
+                <>
+                    <Divider sx={{ mt: 'auto', mb: 1.5 }} />
+                    <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1, display: 'block' }}>
+                        ブラウザ拡張機能
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                        <Button
+                            fullWidth
+                            variant="outlined"
+                            size="small"
+                            startIcon={<MonitorDown size={14} />}
+                            component="a"
+                            href="/extensions/ylistplayer-chrome.zip"
+                            download="ylistplayer-chrome.zip"
+                            sx={{ fontSize: '0.7rem' }}
+                        >
+                            Chrome
+                        </Button>
+                        <Button
+                            fullWidth
+                            variant="outlined"
+                            size="small"
+                            startIcon={<MonitorDown size={14} />}
+                            component="a"
+                            href="/extensions/ylistplayer-firefox.xpi"
+                            download="ylistplayer-firefox.xpi"
+                            sx={{ fontSize: '0.7rem' }}
+                        >
+                            Firefox
+                        </Button>
+                    </Stack>
+                </>
+            )}
         </Box>
     );
 };

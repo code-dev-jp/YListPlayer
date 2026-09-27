@@ -25,12 +25,13 @@ YouTube動画をプレイリストとしてまとめ、各動画に「再生区�
 | 字幕ON・OFF / 音量・ミュート / 全画面 | 済み | 実装済み・テストなし |
 | 区間終了判定・次動画判定の純粋ロジック | 済み | 実装済み・テストあり（playback.ts） |
 | IndexedDB への永続化 (Dexie) | 済み | 実装済み・テストなし |
+| モバイル向け画面レイアウト（動画再生→保存区間→プレイリスト選択・動画一覧） | 済み | 実装済み（BDDあり） |
 
 ## 非機能要件（現状の理解）
 - 永続化: ブラウザの IndexedDB（Dexie）にローカル保存。外部サーバーなし。
 - 依存: Google の YouTube IFrame API / YouTube Player API（外部ネットワーク前提）。
 - パフォーマンス・可用性・セキュリティについて明示的な要件・設定は確認できず **不明**。
-- `npm run build` 時に 564.91 kB / gzip 180.43 kB の bundle（Viteの500kB警告が出る）。
+- `npm run build` 時に bundle（Viteの500kB警告が出る）。
 
 ## 制約
 - フロントエンド単体（Vite + React 18）。バックエンドなし。
@@ -41,14 +42,14 @@ YouTube動画をプレイリストとしてまとめ、各動画に「再生区�
 - 認証・ユーザーアカウント
 - サーバー同期・マルチデバイス同期
 - YouTube 動画の検索・取り込み（手動でURLを貼る方式のみ）
-- モバイル向けレスポンシブ最適化の確認（現状UIは固定幅ベース）
 
 ## 今後のPhase構成
-- Phase 00: ドキュメント・テストベースライン整備（本Skillの成果物）— 完了（commit: ac5ee747, faeff9b9）
-- Phase 01以降: 未定（人間から聞く）
+- Phase 00: ドキュメント・テストベースライン整備 — 完了
+- Phase 01: モバイル向け画面レイアウトの実装 — 完了
 
 ## 対応するBDD Feature
 - docs/bdd/playlist-management.feature
 - docs/bdd/video-playback.feature
 - docs/bdd/segment-editing.feature
 - docs/bdd/import-export.feature
+- docs/bdd/mobile-view.feature
