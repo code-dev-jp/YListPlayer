@@ -7,10 +7,10 @@
 （Dexie）に永続化する。動画再生は YouTube IFrame API 経由。
 
 ```
-index.html → main.tsx → App.tsx
-                         ├── Sidebar.tsx      （デスクトップ: 右20% / モバイル: プレイヤー直下）
-                         ├── PlayerSection.tsx（デスクトップ: 左80% / モバイル: 最上部）
-                         └── db.ts            （Dexie/IndexedDB）
+index.html → main.tsx → components/App.tsx
+                         ├── components/Sidebar.tsx      （デスクトップ: 右20% / モバイル: プレイヤー直下）
+                         ├── components/PlayerSection.tsx（デスクトップ: 左80% / モバイル: 最上部）
+                         └── utils/db.ts                 （Dexie/IndexedDB）
 ```
 
 モバイル画面（`< 900px`）ではレスポンシブ表示（`isMobile`）となり、
@@ -20,21 +20,21 @@ index.html → main.tsx → App.tsx
 ## ブラウザ拡張機能連携
 
 `extension/background.js` はバックエンドサーバーを必要とせず完全クライアントサイドで動作する。
-動画追加時は設定された YListPlayer URL に URL クエリパラメータ（`addVideoId`, `title`, `thumbnail`, `playlistId`）を付与してタブを開く（既存タブがある場合はそのタブの URL を更新して前面に移動する）。YListPlayer 画面（`src/App.tsx`）は起動時/表示時に URL パラメータを検知して IndexedDB に動画を登録し、結果を画面にトースト表示した上で URL パラメータを自動消去する。
+動画追加時は設定された YListPlayer URL に URL クエリパラメータ（`addVideoId`, `title`, `thumbnail`, `playlistId`）を付与してタブを開く（既存タブがある場合はそのタブの URL を更新して前面に移動する）。YListPlayer 画面（`src/components/App.tsx`）は起動時/表示時に URL パラメータを検知して IndexedDB に動画を登録し、結果を画面にトースト表示した上で URL パラメータを自動消去する。
 プレイリスト一覧取得は、開いている YListPlayer タブの IndexedDB から `chrome.scripting.executeScript` 経由で取得する。
 
 ## コンポーネント
-- **App.tsx**: アプリ全体の状態（activePlaylistId / activeVideoId / isAutoPlaying）を
+- **components/App.tsx**: アプリ全体の状態（activePlaylistId / activeVideoId / isAutoPlaying）を
   保持し、Sidebar と PlayerSection を組み合わせる。連続再生の「次へ」ロジックを持つ。
-- **Sidebar.tsx**: プレイリストの作成・選択、動画の追加/削除/並び替え(dnd-kit)、
+- **components/Sidebar.tsx**: プレイリストの作成・選択、動画の追加/削除/並び替え(dnd-kit)、
   Export/Import を担当。
-- **PlayerSection.tsx**: YouTubeプレイヤー（LiteYouTubeEmbed + IFrame API）を管理し、
+- **components/PlayerSection.tsx**: YouTubeプレイヤー（LiteYouTubeEmbed + IFrame API）を管理し、
   セグメントの設定・保存・範囲外スキップ再生を担当。
-- **db.ts**: Dexieスキーマ定義（Playlist / Video / VideoSegment）と `db` インスタンス。
-- **playback.ts**: 連続再生の次インデックス計算（`getNextVideoIndex`）と
+- **utils/db.ts**: Dexieスキーマ定義（Playlist / Video / VideoSegment）と `db` インスタンス。
+- **utils/playback.ts**: 連続再生の次インデックス計算（`getNextVideoIndex`）と
   区間監視の判定（`resolveSegmentAction`）を持つ純粋ロジック。
   PlayerSection/App と `playback.test.ts`（vitest）の単一の真実。
-- **theme.ts**: MUI ダークテーマ定義。
+- **utils/theme.ts**: MUI ダークテーマ定義。
 - **loadYoutubeApi.ts**: YouTube IFrame API のロード（PlayerSection内にも同様のコードが
   重複して存在）。
 

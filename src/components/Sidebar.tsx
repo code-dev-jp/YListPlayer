@@ -5,11 +5,11 @@ import {
     Avatar, IconButton, Divider, Stack
 } from '@mui/material';
 import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle, Link, Pencil, MonitorDown } from 'lucide-react';
-import { db, Video } from './db';
+import { db, Video } from '../utils/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ConfirmDialog, { DialogState } from './ConfirmDialog';
-import { encodePlaylistToParam, PLAYLIST_PARAM } from './playlistUrl';
-import { shortenUrl } from './shortenUrl';
+import { encodePlaylistToParam, PLAYLIST_PARAM } from '../utils/playlistUrl';
+import { shortenUrl } from '../utils/shortenUrl';
 import {
     DndContext,
     closestCenter,

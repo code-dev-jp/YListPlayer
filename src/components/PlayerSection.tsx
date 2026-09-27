@@ -4,8 +4,8 @@ import {
     Alert, Snackbar, Checkbox, FormControlLabel, LinearProgress
 } from '@mui/material';
 import { Save, Flag, Trash2 } from 'lucide-react';
-import { db, Video } from './db';
-import { resolveSegmentAction, getInitialSeekTime, extractVideoId } from './playback';
+import { db, Video } from '../utils/db';
+import { resolveSegmentAction, getInitialSeekTime, extractVideoId } from '../utils/playback';
 
 // YouTube IFrame API の型定義（簡易版）
 declare global {

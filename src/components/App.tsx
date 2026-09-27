@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ThemeProvider, CssBaseline, Box, Grid, Snackbar, Alert, useMediaQuery } from '@mui/material';
-import theme from './theme';
+import theme from '../utils/theme';
 import Sidebar from './Sidebar';
 import PlayerSection from './PlayerSection';
-import { db } from './db';
-import { getNextVideoIndex } from './playback';
+import { db } from '../utils/db';
+import { getNextVideoIndex } from '../utils/playback';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { getPlaylistParam, decodeParamToPlaylist, clearPlaylistParam } from './playlistUrl';
-import { getVideoAddParams, clearVideoAddParams } from './videoAddUrl';
+import { getPlaylistParam, decodeParamToPlaylist, clearPlaylistParam } from '../utils/playlistUrl';
+import { getVideoAddParams, clearVideoAddParams } from '../utils/videoAddUrl';
 import ConfirmDialog, { DialogState } from './ConfirmDialog';
 
 function App() {

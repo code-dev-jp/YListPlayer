@@ -6,7 +6,7 @@
 見た目となり、アプリのダークテーマに合わない。
 
 ## Decision
-専用の `ConfirmDialog` コンポーネント（`src/ConfirmDialog.tsx`）を追加し、
+専用の `ConfirmDialog` コンポーネント（`src/components/ConfirmDialog.tsx`）を追加し、
 MUI `Dialog` + `TextField` で3種を置き換える。呼び出し元は状態（`DialogState`）で
 ダイアログを開き、閉じ時に `onResult(ok, value)` で結果を受け取る。
 
