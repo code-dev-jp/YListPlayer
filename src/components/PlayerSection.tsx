@@ -1,9 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     Box, Button, Typography, Stack, IconButton,
-    Alert, Snackbar, Checkbox, FormControlLabel, LinearProgress
+    Alert, Checkbox, FormControlLabel, Slider
 } from '@mui/material';
-import { Save, Flag, Trash2 } from 'lucide-react';
+import { Save, Flag, Trash2, Play } from 'lucide-react';
+import { formatTime } from '../utils/formatTime';
+import SegmentBoundaryControls from './SegmentBoundaryControls';
+import ResizableVideoFrame from './ResizableVideoFrame';
+import ConfirmDialog, { DialogState } from './ConfirmDialog';
 import { db, Video } from '../utils/db';
 import { resolveSegmentAction, getInitialSeekTime, extractVideoId, validateSegmentInput } from '../utils/playback';
 
@@ -23,16 +27,23 @@ interface PlayerSectionProps {
 }
 
 const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, isAutoPlaying, isMobile = false }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [isVideoResized, setIsVideoResized] = useState(false);
+    const showEditor = !isMobile || isEditing;
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [startMarker, setStartMarker] = useState<number | null>(null);
     const [endMarker, setEndMarker] = useState<number | null>(null);
+    const [dialog, setDialog] = useState<DialogState>({ open: false, variant: 'confirm', title: '' });
+    const [savedMessage, setSavedMessage] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [isPlayerReady, setIsPlayerReady] = useState(false);
     const [apiReady, setApiReady] = useState(() => !!window.YT?.Player);
     const [stopOutsideSegment, setStopOutsideSegment] = useState(true);
 
     const playerRef = useRef<any>(null);
+    const savedSegmentsHeadingRef = useRef<HTMLHeadingElement>(null);
+    const focusAfterDeleteRef = useRef(false);
     const playerDivRef = useRef<HTMLDivElement>(null);
     const intervalRef = useRef<number | null>(null);
     // ponytail: 区間終了の二重通知を抑止するだけのフラグ。区間に戻ったら解除される
@@ -64,6 +75,8 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         if (activeVideoId) {
             setStartMarker(null);
             setEndMarker(null);
+            setError(null);
+            setSavedMessage('');
             setIsPlayerReady(false);
             playingRef.current = false;
             setCurrentTime(0);
@@ -181,7 +194,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     }, [apiReady, videoId]);
 
     // ponytail: 区間チップクリック→その先頭へseekして再生再開
-    const seekToSegment = (sec: number) => {
+    const seekToSegment = useCallback((sec: number) => {
         if (!playerRef.current || !isPlayerReady) return;
         try {
             seekingRef.current = false;
@@ -193,7 +206,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
         } catch (e) {
             console.error('Error during seekToSegment:', e);
         }
-    };
+    }, [isPlayerReady]);
 
     const handleSaveSegment = async () => {
         const validation = validateSegmentInput(startMarker, endMarker, activeVideo?.savedSegments ?? []);
@@ -215,7 +228,131 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
             setStartMarker(null);
             setEndMarker(null);
             setError(null);
+            setSavedMessage('区間を保存しました');
         }
+    };
+
+    type Marker = { value: number; type: 'start' | 'end' | 'segStart' | 'segEnd'; segIndex: number };
+    const renderBoundary = (mark: Marker) => {
+        if (!activeVideo) return null;
+        // 移動先 next がマーカー種別の区間として他区間と重なるか、
+        // または start/end の順序が逆転するか判定する。
+        // 問題がある場合は true を返す（呼び出し側でエラーを表示する）
+        const wouldOverlap = (next: number): { blocked: true; reason: string } | false => {
+            const segs = activeVideo.savedSegments;
+            let newStart: number;
+            let newEnd: number;
+            let otherSegs: typeof segs;
+
+            if (mark.type === 'start') {
+                newStart = next;
+                newEnd = endMarker ?? next;
+                otherSegs = segs;
+                // endMarker が設定済みなら逆転チェック
+                if (endMarker !== null && next >= endMarker) {
+                    return { blocked: true, reason: '開始位置は終了位置より前にしてください。' };
+                }
+            } else if (mark.type === 'end') {
+                newStart = startMarker ?? next;
+                newEnd = next;
+                otherSegs = segs;
+                // startMarker が設定済みなら逆転チェック
+                if (startMarker !== null && next <= startMarker) {
+                    return { blocked: true, reason: '終了位置は開始位置より後にしてください。' };
+                }
+            } else {
+                const self = segs[mark.segIndex];
+                newStart = mark.type === 'segStart' ? next : self.start;
+                newEnd   = mark.type === 'segEnd'   ? next : self.end;
+                otherSegs = segs.filter((_, idx) => idx !== mark.segIndex);
+                // 保存済み区間の逆転チェック
+                if (newStart >= newEnd) {
+                    return { blocked: true, reason: mark.type === 'segStart'
+                        ? '開始位置は終了位置より前にしてください。'
+                        : '終了位置は開始位置より後にしてください。' };
+                }
+            }
+
+            if (newStart < newEnd && otherSegs.some(s => newStart < s.end && newEnd > s.start)) {
+                return { blocked: true, reason: '他の区間をまたぐため移動できません。' };
+            }
+            return false;
+        };
+
+        const nudge = async (delta: number) => {
+            const next = Math.max(0, mark.value + delta);
+
+            const check = wouldOverlap(next);
+            if (check) {
+                setError(check.reason);
+                return;
+            }
+
+            if (mark.type === 'start') {
+                setStartMarker(next);
+            } else if (mark.type === 'end') {
+                setEndMarker(next);
+            } else if (activeVideo.id != null) {
+                const segs = activeVideo.savedSegments.map((s, idx) => {
+                    if (idx !== mark.segIndex) return s;
+                    return mark.type === 'segStart'
+                        ? { ...s, start: next }
+                        : { ...s, end: next };
+                });
+                await db.videos.update(activeVideo.id, { savedSegments: segs });
+            }
+            if (playerRef.current && isPlayerReady) {
+                try {
+                    seekingRef.current = true;
+                    playerRef.current.seekTo(next, true);
+                    setCurrentTime(next);
+                    setTimeout(() => { seekingRef.current = false; }, 600);
+                } catch (e) {
+                    console.error('Error during nudge seek:', e);
+                }
+            }
+        };
+
+        // ↯: 現在の再生位置へマーカーを移動。他区間をまたぐ/逆転する場合はブロック
+        const snapToCurrent = async () => {
+            const next = currentTime;
+
+            const check = wouldOverlap(next);
+            if (check) {
+                setError(check.reason);
+                return;
+            }
+
+            const segs = activeVideo.savedSegments;
+            if (mark.type === 'start') {
+                setStartMarker(next);
+            } else if (mark.type === 'end') {
+                setEndMarker(next);
+            } else if (activeVideo.id != null) {
+                const updated = segs.map((s, idx) => {
+                    if (idx !== mark.segIndex) return s;
+                    return mark.type === 'segStart'
+                        ? { ...s, start: next }
+                        : { ...s, end: next };
+                });
+                await db.videos.update(activeVideo.id, { savedSegments: updated });
+            }
+        };
+
+
+        const boundary = mark.type === 'start' || mark.type === 'segStart' ? '開始' : '終了';
+        const label = `${mark.segIndex < 0 ? '新しい区間' : `区間${mark.segIndex + 1}`}の${boundary}位置`;
+        return <SegmentBoundaryControls label={label} boundary={boundary} value={mark.value}
+            disabled={!isPlayerReady} onSeek={seekToSegment} onNudge={nudge} onSnap={snapToCurrent} />;
+    };
+
+    const seekToPosition = (value: number) => {
+        if (!playerRef.current || !isPlayerReady) return;
+        seekingRef.current = true;
+        playerRef.current.seekTo(value, true);
+        setCurrentTime(value);
+        endedNotifiedRef.current = false;
+        window.setTimeout(() => { seekingRef.current = false; }, 600);
     };
 
     if (!activeVideo) {
@@ -237,335 +374,135 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
     }
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : '100%' }}>
-            <Box sx={{
-                width: '100%',
-                aspectRatio: isMobile ? '16/9' : undefined,
-                flexGrow: isMobile ? undefined : 1,
-                minHeight: isMobile ? '200px' : undefined,
-                position: 'relative',
-                bgcolor: '#000',
-                borderRadius: 2,
-                overflow: 'hidden'
-            }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : '100%', minHeight: isMobile && isVideoResized ? 'calc(100dvh - 24px)' : 0, overflowY: isMobile ? undefined : 'auto',
+            '& :is(button, input):focus-visible, & .Mui-focusVisible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: '2px' },
+            '@media (forced-colors: active)': { '& :is(button, input):focus-visible': { outlineColor: 'Highlight' } },
+        }}>
+            <ResizableVideoFrame isMobile={isMobile} onResizeModeChange={setIsVideoResized}>
                 <Box ref={playerDivRef} sx={{ position: 'absolute', inset: 0 }} />
-            </Box>
+            </ResizableVideoFrame>
 
-            {!isMobile && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
-                <Stack spacing={2}>
-                    <Box sx={{ position: 'relative', mx: 1.5 }}>
-                        <LinearProgress
-                            variant="determinate"
-                            value={(currentTime / (duration || 1)) * 100}
-                        />
-                        {([] as { value: number; label: string; type: 'start' | 'end' | 'segStart' | 'segEnd'; segIndex: number }[])
-                            .concat(startMarker !== null ? [{ value: startMarker, label: 'S', type: 'start' as const, segIndex: -1 }] : [])
-                            .concat(endMarker !== null ? [{ value: endMarker, label: 'E', type: 'end' as const, segIndex: -1 }] : [])
-                            .concat(activeVideo.savedSegments.flatMap((seg, i) => [
-                                { value: seg.start, label: `[${i + 1}`, type: 'segStart' as const, segIndex: i },
-                                { value: seg.end, label: `${i + 1}]`, type: 'segEnd' as const, segIndex: i }
-                            ]))
-                            .map((mark, i) => {
-                                // 移動先 next がマーカー種別の区間として他区間と重なるか、
-                                // または start/end の順序が逆転するか判定する。
-                                // 問題がある場合は true を返す（呼び出し側でエラーを表示する）
-                                const wouldOverlap = (next: number): { blocked: true; reason: string } | false => {
-                                    const segs = activeVideo.savedSegments;
-                                    let newStart: number;
-                                    let newEnd: number;
-                                    let otherSegs: typeof segs;
+            {isMobile && <FormControlLabel sx={{ alignSelf: 'flex-start', mt: 1 }} label="編集"
+                control={<Checkbox checked={isEditing} onChange={(event) => setIsEditing(event.target.checked)}
+                    slotProps={{ input: { 'aria-controls': 'segment-editor' } }} />} />}
 
-                                    if (mark.type === 'start') {
-                                        newStart = next;
-                                        newEnd = endMarker ?? next;
-                                        otherSegs = segs;
-                                        // endMarker が設定済みなら逆転チェック
-                                        if (endMarker !== null && next >= endMarker) {
-                                            return { blocked: true, reason: '開始位置は終了位置より前にしてください。' };
-                                        }
-                                    } else if (mark.type === 'end') {
-                                        newStart = startMarker ?? next;
-                                        newEnd = next;
-                                        otherSegs = segs;
-                                        // startMarker が設定済みなら逆転チェック
-                                        if (startMarker !== null && next <= startMarker) {
-                                            return { blocked: true, reason: '終了位置は開始位置より後にしてください。' };
-                                        }
-                                    } else {
-                                        const self = segs[mark.segIndex];
-                                        newStart = mark.type === 'segStart' ? next : self.start;
-                                        newEnd   = mark.type === 'segEnd'   ? next : self.end;
-                                        otherSegs = segs.filter((_, idx) => idx !== mark.segIndex);
-                                        // 保存済み区間の逆転チェック
-                                        if (newStart >= newEnd) {
-                                            return { blocked: true, reason: mark.type === 'segStart'
-                                                ? '開始位置は終了位置より前にしてください。'
-                                                : '終了位置は開始位置より後にしてください。' };
-                                        }
-                                    }
-
-                                    if (newStart < newEnd && otherSegs.some(s => newStart < s.end && newEnd > s.start)) {
-                                        return { blocked: true, reason: '他の区間をまたぐため移動できません。' };
-                                    }
-                                    return false;
-                                };
-
-                                const nudge = async (delta: number) => {
-                                    const next = Math.max(0, mark.value + delta);
-
-                                    const check = wouldOverlap(next);
-                                    if (check) {
-                                        setError(check.reason);
-                                        return;
-                                    }
-
-                                    if (mark.type === 'start') {
-                                        setStartMarker(next);
-                                    } else if (mark.type === 'end') {
-                                        setEndMarker(next);
-                                    } else if (activeVideo.id != null) {
-                                        const segs = activeVideo.savedSegments.map((s, idx) => {
-                                            if (idx !== mark.segIndex) return s;
-                                            return mark.type === 'segStart'
-                                                ? { ...s, start: next }
-                                                : { ...s, end: next };
-                                        });
-                                        await db.videos.update(activeVideo.id, { savedSegments: segs });
-                                    }
-                                    if (playerRef.current && isPlayerReady) {
-                                        try {
-                                            seekingRef.current = true;
-                                            playerRef.current.seekTo(next, true);
-                                            setCurrentTime(next);
-                                            setTimeout(() => { seekingRef.current = false; }, 600);
-                                        } catch (e) {
-                                            console.error('Error during nudge seek:', e);
-                                        }
-                                    }
-                                };
-
-                                // ↯: 現在の再生位置へマーカーを移動。他区間をまたぐ/逆転する場合はブロック
-                                const snapToCurrent = async () => {
-                                    const next = currentTime;
-
-                                    const check = wouldOverlap(next);
-                                    if (check) {
-                                        setError(check.reason);
-                                        return;
-                                    }
-
-                                    const segs = activeVideo.savedSegments;
-                                    if (mark.type === 'start') {
-                                        setStartMarker(next);
-                                    } else if (mark.type === 'end') {
-                                        setEndMarker(next);
-                                    } else if (activeVideo.id != null) {
-                                        const updated = segs.map((s, idx) => {
-                                            if (idx !== mark.segIndex) return s;
-                                            return mark.type === 'segStart'
-                                                ? { ...s, start: next }
-                                                : { ...s, end: next };
-                                        });
-                                        await db.videos.update(activeVideo.id, { savedSegments: updated });
-                                    }
-                                };
-
-                                return (
-                                    <Box
-                                        key={i}
-                                        sx={{
-                                            position: 'absolute',
-                                            bottom: '100%',
-                                            left: `${(mark.value / (duration || 100)) * 100}%`,
-                                            transform: 'translateX(-50%)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '2px',
-                                            lineHeight: 1,
-                                        }}
-                                    >
-                                        {(mark.type === 'start' || mark.type === 'segStart') && (
-                                            <Box
-                                                component="button"
-                                                onClick={snapToCurrent}
-                                                title="現在の再生位置に合わせる"
-                                                sx={{
-                                                    bgcolor: 'transparent',
-                                                    border: 'none',
-                                                    color: 'warning.main',
-                                                    fontSize: '0.8rem',
-                                                    cursor: 'pointer',
-                                                    p: '0 2px',
-                                                    lineHeight: 1,
-                                                    '&:hover': { color: 'warning.light' },
-                                                }}
-                                            >↯</Box>
-                                        )}
-                                        <Box
-                                            component="button"
-                                            onClick={() => nudge(-1)}
-                                            title="-1秒"
-                                            sx={{
-                                                bgcolor: 'transparent',
-                                                border: 'none',
-                                                color: 'primary.main',
-                                                fontSize: '0.75rem',
-                                                cursor: 'pointer',
-                                                p: '0 3px',
-                                                lineHeight: 1,
-                                                '&:hover': { color: 'primary.light' },
-                                            }}
-                                        >◂</Box>
-                                        <Box
-                                            component="button"
-                                            onClick={() => seekToSegment(mark.value)}
-                                            title={`${mark.label} に飛ぶ`}
-                                            sx={{
-                                                bgcolor: 'transparent',
-                                                border: 'none',
-                                                color: 'primary.main',
-                                                fontWeight: 'bold',
-                                                fontSize: '0.85rem',
-                                                cursor: 'pointer',
-                                                p: '0 2px',
-                                                lineHeight: 1,
-                                                '&:hover': { color: 'primary.light' },
-                                            }}
-                                        >
-                                            {mark.label}
-                                        </Box>
-                                        <Box
-                                            component="button"
-                                            onClick={() => nudge(+1)}
-                                            title="+1秒"
-                                            sx={{
-                                                bgcolor: 'transparent',
-                                                border: 'none',
-                                                color: 'primary.main',
-                                                fontSize: '0.75rem',
-                                                cursor: 'pointer',
-                                                p: '0 3px',
-                                                lineHeight: 1,
-                                                '&:hover': { color: 'primary.light' },
-                                            }}
-                                        >▸</Box>
-                                        {(mark.type === 'end' || mark.type === 'segEnd') && (
-                                            <Box
-                                                component="button"
-                                                onClick={snapToCurrent}
-                                                title="現在の再生位置に合わせる"
-                                                sx={{
-                                                    bgcolor: 'transparent',
-                                                    border: 'none',
-                                                    color: 'warning.main',
-                                                    fontSize: '0.8rem',
-                                                    cursor: 'pointer',
-                                                    p: '0 2px',
-                                                    lineHeight: 1,
-                                                    '&:hover': { color: 'warning.light' },
-                                                }}
-                                            >↯</Box>
-                                        )}
-                                    </Box>
-                                );
-                            })
-                        }
-                    </Box>
-
-                    <Stack direction="row" spacing={2} alignItems="center">
-                        <Button
-                            variant="outlined"
-                            startIcon={<Flag size={18} />}
-                            onClick={() => setStartMarker(currentTime)}
-                            color={startMarker !== null ? 'primary' : 'inherit'}
-                        >
-                            開始点をセット
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            startIcon={<Flag size={18} style={{ transform: 'rotate(180deg)' }} />}
-                            onClick={() => setEndMarker(currentTime)}
-                            color={endMarker !== null ? 'primary' : 'inherit'}
-                        >
-                            終了点をセット
-                        </Button>
-                        <Button
-                            variant="contained"
-                            startIcon={<Save size={18} />}
-                            onClick={handleSaveSegment}
-                            disabled={startMarker === null || endMarker === null}
-                        >
-                            区間を保存
-                        </Button>
-
-                        <Box sx={{ flexGrow: 1 }} />
-
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    checked={stopOutsideSegment}
-                                    onChange={(e) => setStopOutsideSegment(e.target.checked)}
-                                    size="small"
-                                />
-                            }
-                            label="区間外で停止"
-                        />
+            {showEditor && <Box id="segment-editor" component="section" aria-labelledby="segment-editor-title" sx={{
+                mt: isMobile ? 2 : 0, p: 1.5, bgcolor: 'background.paper', borderRadius: 2, flexShrink: 0,
+            }}>
+                <Stack spacing={1}>
+                    <Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" justifyContent="space-between" gap={1}>
+                        <Typography id="segment-editor-title" component="h2" variant="subtitle1" fontWeight={600}>再生区間を作成</Typography>
+                        <FormControlLabel sx={{ m: 0, mr: 'auto' }} control={<Checkbox checked={stopOutsideSegment}
+                            onChange={(e) => setStopOutsideSegment(e.target.checked)} size="small" />} label="区間外で停止" />
+                        <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {formatTime(currentTime)} / {formatTime(duration)}
+                        </Typography>
                     </Stack>
+                    <Box>
+                        <Slider aria-label="再生位置" min={0} max={duration || 1} step={1}
+                            value={Math.min(currentTime, duration || 1)} disabled={!isPlayerReady || duration <= 0}
+                            getAriaValueText={(value) => formatTime(value)}
+                            onChange={(_, value) => { seekingRef.current = true; setCurrentTime(value as number); }}
+                            onChangeCommitted={(_, value) => seekToPosition(value as number)}
+                            onTouchCancel={() => { seekingRef.current = false; }}
+                            onPointerCancel={() => { seekingRef.current = false; }}
+                            sx={{ display: 'block', width: 'auto', mx: 1.5 }} />
+                        <Box aria-hidden="true" sx={{ position: 'relative', height: 4, mx: 1.5, mb: 1, bgcolor: 'action.selected', overflow: 'hidden' }}>
+                            {duration > 0 && activeVideo.savedSegments.map((seg, i) => (
+                                <Box key={i} sx={{ position: 'absolute', height: '100%', bgcolor: 'primary.main',
+                                    left: `${(seg.start / (duration || 1)) * 100}%`,
+                                    width: `${((seg.end - seg.start) / (duration || 1)) * 100}%`,
+                                }} />
+                            ))}
+                        </Box>
+                        <Typography variant="body2" color="text.secondary">
+                            {isPlayerReady ? '再生位置を選び、開始点と終了点をセットして保存します。' : 'プレイヤーを準備中です。読み込み後に区間を設定できます。'}
+                        </Typography>
+                    </Box>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>
+                        <Box>
+                            <Button fullWidth variant="outlined" color="inherit" disabled={!isPlayerReady}
+                                startIcon={<Flag size={18} />} onClick={() => { setStartMarker(currentTime); setSavedMessage(''); }}
+                                sx={{ minHeight: 44 }}>開始点をセット</Button>
+                            {startMarker !== null ? renderBoundary({ value: startMarker, type: 'start', segIndex: -1 }) :
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>開始位置：未設定</Typography>}
+                        </Box>
+                        <Box>
+                            <Button fullWidth variant="outlined" color="inherit" disabled={!isPlayerReady}
+                                startIcon={<Flag size={18} style={{ transform: 'rotate(180deg)' }} />}
+                                onClick={() => { setEndMarker(currentTime); setSavedMessage(''); }}
+                                sx={{ minHeight: 44 }}>終了点をセット</Button>
+                            {endMarker !== null ? renderBoundary({ value: endMarker, type: 'end', segIndex: -1 }) :
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>終了位置：未設定</Typography>}
+                        </Box>
+                        <Box>
+                            <Button fullWidth variant="contained" startIcon={<Save size={18} />} onClick={handleSaveSegment}
+                                disabled={!isPlayerReady} sx={{ minHeight: 44, color: 'background.default', '&:hover': { bgcolor: 'primary.light' } }}>区間を保存</Button>
+                            <Typography role="status" variant="body2" color="text.secondary">{savedMessage}</Typography>
+                        </Box>
+                    </Box>
+                    {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
                 </Stack>
-            </Box>
-            )}
+            </Box>}
 
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2, flexGrow: 0, overflowY: 'auto', maxHeight: '150px' }}>
-                <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>保存済み区間リスト</Typography>
+            <Box component="section" aria-labelledby="saved-segments-title" sx={{
+                mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 2,
+                flexShrink: 0, height: 150, minHeight: 150, flexGrow: isVideoResized ? 1 : 0, display: 'flex', flexDirection: 'column',
+            }}>
+                <Typography ref={savedSegmentsHeadingRef} tabIndex={-1} id="saved-segments-title" component="h2" variant="subtitle1" fontWeight={600} sx={{ mb: 1, flexShrink: 0,
+                    '&:focus': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: '2px' },
+                }}>
+                    保存済み区間（{activeVideo.savedSegments.length}）
+                </Typography>
+                <Box role="region" aria-label="保存済み区間の一覧" tabIndex={0} sx={{
+                    flexGrow: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', p: 0.5,
+                    '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: '2px' },
+                }}>
                 {activeVideo.savedSegments.length === 0 ? (
-                    <Typography variant="caption" color="grey.500">区間が保存されていません</Typography>
+                    <Typography variant="body2" color="text.secondary">{showEditor
+                        ? '保存した区間がここに表示されます。上の開始点と終了点をセットして保存してください。'
+                        : '保存した区間はありません。「編集」をオンにすると区間を作成できます。'}</Typography>
                 ) : (
-                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    <Stack spacing={2}>
+                        <Typography variant="body2" color="text.secondary">{showEditor
+                            ? '時刻を選ぶと再生。±1秒で調整し、◎で現在位置に合わせます。変更は自動保存されます。'
+                            : '区間を選ぶと、その位置から再生します。'}</Typography>
                         {activeVideo.savedSegments.map((seg, i) => (
-                            <Box
-                                key={i}
-                                onClick={() => seekToSegment(seg.start)}
-                                title="この区間から再生"
-                                sx={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    bgcolor: 'rgba(255,255,255,0.05)',
-                                    px: 1.5,
-                                    py: 0.5,
-                                    borderRadius: 1,
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    cursor: 'pointer',
-                                    '&:hover': { bgcolor: 'rgba(255,255,255,0.12)' }
-                                }}
-                            >
-                                <Typography variant="caption" sx={{ mr: 1 }}>
-                                    #{i + 1}: {Math.floor(seg.start)}s - {Math.floor(seg.end)}s
-                                </Typography>
-                                <IconButton
-                                    size="small"
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        if (activeVideo.id) {
-                                            const newSegments = activeVideo.savedSegments.filter((_, idx) => idx !== i);
-                                            await db.videos.update(activeVideo.id, { savedSegments: newSegments });
-                                        }
-                                    }}
-                                    sx={{ color: 'grey.500', '&:hover': { color: 'error.main' } }}
-                                >
-                                    <Trash2 size={14} />
-                                </IconButton>
+                            <Box key={i} sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 1 }}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                                    <Button color="inherit" startIcon={<Play size={16} />} disabled={!isPlayerReady}
+                                        aria-label={`区間 ${i + 1} · ${formatTime(seg.start)}–${formatTime(seg.end)} を再生`} onClick={() => seekToSegment(seg.start)}
+                                        sx={{ minHeight: 44, fontVariantNumeric: 'tabular-nums' }}>区間 {i + 1} · {formatTime(seg.start)}–{formatTime(seg.end)}</Button>
+                                    {showEditor && <IconButton aria-label={`区間${i + 1}を削除`} sx={{ width: 44, height: 44, color: 'text.secondary' }}
+                                        onClick={() => setDialog({
+                                            open: true, variant: 'confirm', title: `区間${i + 1}を削除しますか？`,
+                                            message: `${formatTime(seg.start)}–${formatTime(seg.end)}の区間を削除します。この操作は取り消せません。`,
+                                            onResult: async (ok) => {
+                                                if (ok && activeVideo.id) {
+                                                    focusAfterDeleteRef.current = true;
+                                                    const newSegments = activeVideo.savedSegments.filter((_, idx) => idx !== i);
+                                                    await db.videos.update(activeVideo.id, { savedSegments: newSegments });
+                                                }
+                                            },
+                                        })}><Trash2 size={18} /></IconButton>}
+                                </Stack>
+                                {showEditor && <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 0.5, lg: 2 } }}>
+                                    {renderBoundary({ value: seg.start, type: 'segStart', segIndex: i })}
+                                    {renderBoundary({ value: seg.end, type: 'segEnd', segIndex: i })}
+                                </Box>}
                             </Box>
                         ))}
                     </Stack>
                 )}
+                </Box>
             </Box>
+            <ConfirmDialog state={dialog} onChange={setDialog} onExited={() => {
+                if (focusAfterDeleteRef.current) {
+                    savedSegmentsHeadingRef.current?.focus();
+                    focusAfterDeleteRef.current = false;
+                }
+            }} />
 
-            {error && (
-                <Snackbar open onClose={() => setError(null)} autoHideDuration={4000}>
-                    <Alert severity="error" sx={{ width: '100%' }}>{error}</Alert>
-                </Snackbar>
-            )}
         </Box>
     );
 };

@@ -4,14 +4,14 @@ const theme = createTheme({
     palette: {
         mode: 'dark',
         primary: {
-            main: '#ff0000', // YouTube Red
+            main: '#ff6b67', // Playback accent
         },
         secondary: {
             main: '#ffffff',
         },
         background: {
-            default: '#0f0f0f',
-            paper: '#1e1e1e',
+            default: '#141415',
+            paper: '#1c1c1e',
         },
     },
     typography: {

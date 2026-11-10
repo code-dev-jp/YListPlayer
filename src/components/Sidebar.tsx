@@ -4,7 +4,7 @@ import {
     TextField, List, ListItem, Checkbox, FormControlLabel,
     Avatar, IconButton, Divider, Stack
 } from '@mui/material';
-import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle, Link, Pencil, MonitorDown } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Download, Upload, PlayCircle, Link, Pencil, MonitorDown, Play } from 'lucide-react';
 import { db, Video } from '../utils/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ConfirmDialog, { DialogState } from './ConfirmDialog';
@@ -86,8 +86,10 @@ const SortableVideoItem = ({ video, isActive, onSelect, onDelete }: any) => {
             sx={{
                 mb: 1,
                 borderRadius: 1,
-                bgcolor: isActive ? 'primary.main' : 'background.paper',
-                '&:hover': { bgcolor: isActive ? 'primary.dark' : 'rgba(255, 255, 255, 0.08)' }
+                borderInlineStart: '2px solid',
+                borderColor: isActive ? 'primary.main' : 'transparent',
+                bgcolor: isActive ? 'action.selected' : 'transparent',
+                '&:hover': { bgcolor: isActive ? 'action.selected' : 'action.hover' }
             }}
             secondaryAction={
                 <IconButton edge="end" size="small" onClick={() => onDelete(video.id)}>
@@ -95,23 +97,29 @@ const SortableVideoItem = ({ video, isActive, onSelect, onDelete }: any) => {
                 </IconButton>
             }
             disablePadding
+            aria-current={isActive ? 'true' : undefined}
         >
             <Box sx={{ display: 'flex', alignItems: 'center', p: 1, pr: 5, flexGrow: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onSelect(video.id)}>
-                <Box {...attributes} {...listeners} sx={{ cursor: 'grab', mr: 1, color: 'grey.600' }}>
-                    <GripVertical size={20} />
+                <Box {...attributes} {...listeners} sx={{ cursor: 'grab', mr: 1, color: 'text.secondary', display: 'flex' }}>
+                    <GripVertical size={16} />
                 </Box>
-                <Avatar variant="rounded" src={video.thumbnail} sx={{ width: 48, height: 36, mr: 1.5 }} />
+                <Avatar variant="rounded" src={video.thumbnail} sx={{ width: 48, height: 36, mr: 1 }} />
+                {isActive && (
+                    <Box sx={{ mr: 1, display: 'flex', color: 'primary.main' }}>
+                        <Play size={14} aria-hidden="true" />
+                    </Box>
+                )}
                 <Box sx={{ flexGrow: 1, minWidth: 0, overflow: 'hidden' }}>
                     <Typography
                         ref={titleRef}
                         onMouseEnter={startTitleScroll}
                         onMouseLeave={stopTitleScroll}
-                        variant="body2" noWrap sx={{ color: isActive ? 'white' : 'inherit' }}
+                        variant="body2" noWrap sx={{ fontWeight: isActive ? 600 : 400 }}
                     >
                         {video.title}
                     </Typography>
                     {video.savedSegments?.length > 0 && (
-                        <Typography variant="caption" sx={{ color: isActive ? 'rgba(255,255,255,0.7)' : 'text.secondary' }}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                             {video.savedSegments.length}個の区間
                         </Typography>
                     )}
@@ -370,7 +378,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     return (
         <Box sx={{ height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>マイプレイリスト</Typography>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>マイプレイリスト</Typography>
 
             <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
                 <FormControl fullWidth size="small">

@@ -163,7 +163,7 @@ function App() {
         <ThemeProvider theme={theme}>
             <CssBaseline />
             {isMobile ? (
-                <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default', overflowY: 'auto', p: 1 }}>
+                <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default', overflowY: 'auto', p: 1.5 }}>
                     {/* 1. Player Section (Player + Saved Segments) */}
                     <Box sx={{ width: '100%', mb: 2 }}>
                         <PlayerSection
@@ -175,7 +175,7 @@ function App() {
                     </Box>
 
                     {/* 2. Sidebar Section (Playlist Select + Add Video + Video List) */}
-                    <Box sx={{ width: '100%', p: 1, bgcolor: 'background.paper', borderRadius: 2 }}>
+                    <Box sx={{ width: '100%', p: 1.5, bgcolor: 'background.paper', borderRadius: 2 }}>
                         <Sidebar
                             activePlaylistId={activePlaylistId}
                             onSelectPlaylist={setActivePlaylistId}
@@ -191,8 +191,8 @@ function App() {
             ) : (
                 <Box sx={{ flexGrow: 1, height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <Grid container sx={{ flexGrow: 1, height: '100%', overflow: 'hidden' }}>
-                        {/* Main Player Section (80%) */}
-                        <Grid sx={{ height: '100%', display: 'flex', flexDirection: 'column', p: 2, borderRight: '1px solid #333', flexBasis: '80%', flexGrow: 0, maxWidth: '80%' }}>
+                        {/* Main Player Section */}
+                        <Grid sx={{ height: '100%', display: 'flex', flexDirection: 'column', p: 2, borderRight: '1px solid', borderColor: 'divider', flex: 1, minWidth: 0 }}>
                             <PlayerSection
                                 activeVideo={activeVideo}
                                 onVideoEnd={handleVideoEnd}
@@ -201,8 +201,8 @@ function App() {
                             />
                         </Grid>
 
-                        {/* Sidebar Section (20%) */}
-                        <Grid sx={{ height: '100%', p: 2, bgcolor: 'background.paper', overflowY: 'auto', flexBasis: '20%', flexGrow: 0, maxWidth: '20%' }}>
+                        {/* Sidebar Section */}
+                        <Grid sx={{ height: '100%', p: 2, bgcolor: 'background.paper', overflowY: 'auto', flex: '0 0 clamp(288px, 26vw, 400px)' }}>
                             <Sidebar
                                 activePlaylistId={activePlaylistId}
                                 onSelectPlaylist={setActivePlaylistId}

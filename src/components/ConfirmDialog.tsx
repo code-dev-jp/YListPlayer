@@ -22,9 +22,10 @@ export interface DialogState {
 interface ConfirmDialogProps {
     state: DialogState;
     onChange: (s: DialogState) => void;
+    onExited?: () => void;
 }
 
-const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ state, onChange }) => {
+const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ state, onChange, onExited }) => {
     const [value, setValue] = useState(state.defaultValue ?? '');
 
     useEffect(() => {
@@ -49,13 +50,14 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ state, onChange }) => {
     return (
         <Dialog
             open={state.open}
+            slotProps={{ transition: { onExited } }}
             onClose={() => close(false)}
             onKeyDown={(e) => { if (e.key === 'Enter' && isPrompt) close(true); }}
         >
             <DialogTitle sx={{ color: state.variant === 'alert' ? 'error.main' : 'inherit' }}>
                 {state.title}
             </DialogTitle>
-            <DialogContent sx={{ minWidth: 320 }}>
+            <DialogContent sx={{ minWidth: { xs: 0, sm: 320 } }}>
                 {state.message && (
                     <Typography variant="body2" sx={{ mb: (isPrompt || isUrlDisplay || isQrDisplay) ? 2 : 0 }}>
                         {state.message}
