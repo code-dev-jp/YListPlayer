@@ -24,9 +24,10 @@ interface PlayerSectionProps {
     onVideoEnd: () => void;
     isAutoPlaying: boolean;
     isMobile?: boolean;
+    children?: React.ReactNode;
 }
 
-const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, isAutoPlaying, isMobile = false }) => {
+const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, isAutoPlaying, isMobile = false, children }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [isVideoResized, setIsVideoResized] = useState(false);
     const showEditor = !isMobile || isEditing;
@@ -357,19 +358,22 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
 
     if (!activeVideo) {
         return (
-            <Box sx={{
-                width: '100%',
-                aspectRatio: isMobile ? '16/9' : undefined,
-                flexGrow: isMobile ? undefined : 1,
-                minHeight: isMobile ? '200px' : undefined,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                bgcolor: '#000',
-                borderRadius: 2
-            }}>
-                <Typography color="grey.600" sx={{ textAlign: 'center' }}>動画を選択してください</Typography>
-            </Box>
+            <>
+                <Box sx={{
+                    width: '100%',
+                    aspectRatio: isMobile ? '16/9' : undefined,
+                    flexGrow: isMobile ? undefined : 1,
+                    minHeight: isMobile ? '200px' : undefined,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: '#000',
+                    borderRadius: 2
+                }}>
+                    <Typography color="grey.600" sx={{ textAlign: 'center' }}>動画を選択してください</Typography>
+                </Box>
+                {children}
+            </>
         );
     }
 
@@ -503,6 +507,7 @@ const PlayerSection: React.FC<PlayerSectionProps> = ({ activeVideo, onVideoEnd, 
                 }
             }} />
 
+            {children}
         </Box>
     );
 };

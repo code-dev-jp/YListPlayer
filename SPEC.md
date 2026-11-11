@@ -54,3 +54,9 @@ YouTube動画をプレイリストとしてまとめ、各動画に「再生区�
 - docs/bdd/segment-editing.feature
 - docs/bdd/import-export.feature
 - docs/bdd/mobile-view.feature
+
+## 小さい画面の動画表示
+
+幅900px未満では、ページを下へスクロールしても動画だけが画面上端に残る。
+区間編集とプレイリストはスクロールできる。動画の高さ変更後も固定表示を維持する。
+固定動画の下で操作できるよう、モバイルの高さ調整は画面高から200pxを引いた値を上限とする（最小200px）。

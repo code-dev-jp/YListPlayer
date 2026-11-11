@@ -163,29 +163,29 @@ function App() {
         <ThemeProvider theme={theme}>
             <CssBaseline />
             {isMobile ? (
-                <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default', overflowY: 'auto', p: 1.5 }}>
+                <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default', p: 1.5 }}>
                     {/* 1. Player Section (Player + Saved Segments) */}
-                    <Box sx={{ width: '100%', mb: 2 }}>
+                    <Box sx={{ width: '100%' }}>
                         <PlayerSection
                             activeVideo={activeVideo}
                             onVideoEnd={handleVideoEnd}
                             isAutoPlaying={isAutoPlaying}
                             isMobile={true}
-                        />
-                    </Box>
-
-                    {/* 2. Sidebar Section (Playlist Select + Add Video + Video List) */}
-                    <Box sx={{ width: '100%', p: 1.5, bgcolor: 'background.paper', borderRadius: 2 }}>
-                        <Sidebar
-                            activePlaylistId={activePlaylistId}
-                            onSelectPlaylist={setActivePlaylistId}
-                            onSelectVideo={handleSelectVideo}
-                            activeVideoId={activeVideoId}
-                            onPlayPlaylist={handlePlayPlaylist}
-                            isLoop={isLoop}
-                            onToggleLoop={setIsLoop}
-                            isMobile={true}
-                        />
+                        >
+                            {/* 2. Sidebar Section (Playlist Select + Add Video + Video List) */}
+                            <Box sx={{ width: '100%', mt: 2, p: 1.5, flexShrink: 0, bgcolor: 'background.paper', borderRadius: 2 }}>
+                                <Sidebar
+                                    activePlaylistId={activePlaylistId}
+                                    onSelectPlaylist={setActivePlaylistId}
+                                    onSelectVideo={handleSelectVideo}
+                                    activeVideoId={activeVideoId}
+                                    onPlayPlaylist={handlePlayPlaylist}
+                                    isLoop={isLoop}
+                                    onToggleLoop={setIsLoop}
+                                    isMobile={true}
+                                />
+                            </Box>
+                        </PlayerSection>
                     </Box>
                 </Box>
             ) : (

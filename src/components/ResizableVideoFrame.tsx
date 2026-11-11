@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Box, Button, IconButton, Tooltip } from '@mui/material';
+import { Box, Button, GlobalStyles, IconButton, Tooltip } from '@mui/material';
 import { Minus, Plus } from 'lucide-react';
 
 interface ResizableVideoFrameProps {
@@ -17,7 +17,7 @@ const ResizableVideoFrame: React.FC<ResizableVideoFrameProps> = ({ isMobile, chi
     const [height, setHeight] = useState<number | null>(null);
     const [measuredHeight, setMeasuredHeight] = useState(minimum);
     const [isDragging, setIsDragging] = useState(false);
-    const maximum = Math.max(minimum, viewportHeight);
+    const maximum = Math.max(minimum, viewportHeight - (isMobile ? 200 : 0));
     const clamp = (value: number) => Math.round(Math.max(minimum, Math.min(maximum, value)));
     const isManual = height !== null;
 
@@ -27,12 +27,12 @@ const ResizableVideoFrame: React.FC<ResizableVideoFrameProps> = ({ isMobile, chi
         const updateViewport = () => {
             const next = window.innerHeight;
             setViewportHeight(next);
-            setHeight(value => value === null ? null : Math.max(minimum, Math.min(next, value)));
+            setHeight(value => value === null ? null : Math.max(minimum, Math.min(Math.max(minimum, next - (isMobile ? 200 : 0)), value)));
         };
         updateViewport();
         window.addEventListener('resize', updateViewport);
         return () => window.removeEventListener('resize', updateViewport);
-    }, [minimum]);
+    }, [minimum, isMobile]);
 
     useEffect(() => {
         if (!frameRef.current) return;
@@ -50,11 +50,13 @@ const ResizableVideoFrame: React.FC<ResizableVideoFrameProps> = ({ isMobile, chi
     };
 
     return <>
+        {isMobile && <GlobalStyles styles={{ html: { scrollPaddingTop: measuredHeight + 12 } }} />}
         <Box id={frameId} ref={frameRef} role="region" aria-label="動画プレイヤー" sx={{
             width: '100%', height: height === null ? undefined : clamp(height), maxHeight: maximum,
             aspectRatio: isMobile && height === null ? '16/9' : undefined,
             flexGrow: !isMobile && height === null ? 1 : 0,
-            minHeight: minimum, flexShrink: 0, position: 'relative', bgcolor: '#000', borderRadius: 2,
+            minHeight: minimum, flexShrink: 0, position: isMobile ? 'sticky' : 'relative',
+            top: isMobile ? 0 : undefined, zIndex: isMobile ? 1 : undefined, bgcolor: '#000', borderRadius: 2,
             overflow: 'hidden', pointerEvents: isDragging ? 'none' : undefined,
         }}>{children}</Box>
         <Box role="group" aria-label="動画サイズ調整" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
